@@ -1,0 +1,47 @@
+plugins {
+    id 'com.android.application'
+    // id 'org.jetbrains.kotlin.android' // Uncomment if using Kotlin
+}
+
+android {
+    namespace 'com.example.mybasicapp'
+    compileSdk 34 // Target Android API level
+
+    defaultConfig {
+        applicationId "com.example.mybasicapp"
+        minSdk 21       // Minimum Android API level
+        targetSdk 34    // Target Android API level for runtime checks
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            // Debug specific settings if any
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8 // Or 11, 17
+        targetCompatibility JavaVersion.VERSION_1_8 // Or 11, 17
+    }
+    // If using Kotlin:
+    // kotlinOptions {
+    //    jvmTarget = '1.8' // Or '11', '17'
+    // }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.12.0' // Example, can be core if not using Kotlin
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
