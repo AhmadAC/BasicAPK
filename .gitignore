@@ -1,0 +1,32 @@
+# Android Studio
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar # Keep the wrapper jar
+
+# Secrets (if any, though not for this basic example)
+*.keystore
+*.jks
+google-services.json
+
+# Local configuration files (sdk path, etc)
+local.properties
+
+# Android Studio Profiler
+*.hprof
+*.snapshot
