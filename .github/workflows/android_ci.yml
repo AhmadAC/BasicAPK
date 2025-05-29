@@ -29,15 +29,12 @@ jobs:
 
     # This step installs the specified version of Gradle and adds the 'gradle' command to the PATH.
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
+      uses: gradle/actions/setup-gradle@v3 # Using setup-gradle v3
       with:
         gradle-version: ${{ env.GRADLE_VERSION_TO_USE }}
-        # Optional: Disable default wrapper detection if you ensure gradle-wrapper.properties is NOT in your repo
-        # wrapper-detection-enabled: false
-        # Optional: Disable caching for this step if you want it truly fresh,
-        # but caching for later steps is still good.
-        # cache-disabled: true
-
+        # setup-gradle action has its own caching for Gradle User Home,
+        # which can be beneficial. You can further configure it if needed.
+        # See https://github.com/gradle/actions/blob/main/setup-gradle/README.md#caching
 
     # This step uses the 'gradle' command (from Setup Gradle step) to initialize
     # the Gradle wrapper files (gradlew, gradlew.bat, gradle-wrapper.jar, gradle-wrapper.properties)
@@ -49,25 +46,28 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x ./gradlew
 
-    # Optional but recommended: Cache Gradle dependencies and wrapper distributions
-    # This cache will use the wrapper files generated in the previous step.
+    # Recommended: Cache Gradle dependencies downloaded by the wrapper.
+    # This cache uses the wrapper files generated in the previous step and other project build files.
     - name: Cache Gradle packages
       uses: actions/cache@v4
       with:
         path: |
           ~/.gradle/caches
           ~/.gradle/wrapper/dists
-        # Key for the cache. Includes Gradle version and hash of build files.
-        key: ${{ runner.os }}-gradle-${{ env.GRADLE_VERSION_TO_USE }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        # MODIFIED KEY: Added a version suffix '-v1' to help invalidate the cache if needed.
+        # Increment this suffix (e.g., -v2, -v3) or use a dynamic value like ${{ github.run_id }}
+        # if you suspect stale cache issues and need to force a fresh download.
+        key: ${{ runner.os }}-gradle-${{ env.GRADLE_VERSION_TO_USE }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}-v1
         restore-keys: |
           ${{ runner.os }}-gradle-${{ env.GRADLE_VERSION_TO_USE }}-
 
     - name: Build with Gradle Wrapper
-      run: ./gradlew assembleDebug # Builds a debug APK using the generated wrapper
+      # Adding --stacktrace for more detailed error output if the build fails
+      run: ./gradlew assembleDebug --stacktrace
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug-apk # Name of the artifact
-        path: app/build/outputs/apk/debug/app-debug.apk # Path to the APK
+        name: MrCoopersESP32 # Name of the artifact
+        path: app/build/outputs/apk/debug/MrCoopersESP32.apk # Path to the APK
         if-no-files-found: error # Fail if APK not found
