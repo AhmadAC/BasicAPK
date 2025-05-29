@@ -1,0 +1,1040 @@
+Total files found and listed: 28
+List of all files found (paths relative to processing context):
+- .github\workflows\android_ci.yml
+- .gitignore
+- app\build.gradle
+- app\src\main\AndroidManifest.xml
+- app\src\main\java\com\example\mybasicapp\MainActivity.java
+- app\src\main\java\com\example\mybasicapp\WebSocketService.java
+- app\src\main\res\drawable\ic_stat_message.xml
+- app\src\main\res\drawable\ic_stat_service.xml
+- app\src\main\res\layout\activity_main.xml
+- app\src\main\res\mipmap-hdpi\ic_launcher.png
+- app\src\main\res\mipmap-hdpi\ic_launcher_round.png
+- app\src\main\res\mipmap-mdpi\ic_launcher.png
+- app\src\main\res\mipmap-mdpi\ic_launcher_round.png
+- app\src\main\res\mipmap-xhdpi\ic_launcher.png
+- app\src\main\res\mipmap-xhdpi\ic_launcher_round.png
+- app\src\main\res\mipmap-xxhdpi\ic_launcher.png
+- app\src\main\res\mipmap-xxhdpi\ic_launcher_round.png
+- app\src\main\res\mipmap-xxxhdpi\ic_launcher.png
+- app\src\main\res\mipmap-xxxhdpi\ic_launcher_round.png
+- app\src\main\res\values\colors.xml
+- app\src\main\res\values\strings.xml
+- app\src\main\res\values\themes.xml
+- app\src\main\res\xml\backup_rules.xml
+- app\src\main\res\xml\data_extraction_rules.xml
+- build.gradle
+- gradle\wrapper\gradle-wrapper.properties
+- gradle.properties
+- settings.gradle
+
+Content included for 17 file(s) with extensions: .java, .yml, .xml, .gradle, .properties
+
+================================================================================
+
+
+#################### START OF FILE: .github\workflows\android_ci.yml ####################
+
+name: Android CI Build (Online Wrapper Init)
+
+on:
+  push:
+    branches: [ "main", "master" ] # Or your default branch
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    env:
+      # Define the Gradle version for the wrapper and build.
+      # Choose a version compatible with your Android Gradle Plugin (AGP).
+      # For AGP 8.2.1 (used in build.gradle example), Gradle 8.2 or higher is typically needed.
+      # Check AGP release notes for compatibility.
+      GRADLE_VERSION_TO_USE: '8.5' # Example: Use Gradle 8.5
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17' # Common for modern Android development
+        distribution: 'temurin'
+
+    # This step installs the specified version of Gradle and adds the 'gradle' command to the PATH.
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3 # Using setup-gradle v3
+      with:
+        gradle-version: ${{ env.GRADLE_VERSION_TO_USE }}
+        # setup-gradle action has its own caching for Gradle User Home,
+        # which can be beneficial. You can further configure it if needed.
+        # See https://github.com/gradle/actions/blob/main/setup-gradle/README.md#caching
+
+    # This step uses the 'gradle' command (from Setup Gradle step) to initialize
+    # the Gradle wrapper files (gradlew, gradlew.bat, gradle-wrapper.jar, gradle-wrapper.properties)
+    # in the runner's workspace. The generated gradle-wrapper.properties will point to GRADLE_VERSION_TO_USE.
+    - name: Initialize Gradle Wrapper
+      run: gradle wrapper --gradle-version ${{ env.GRADLE_VERSION_TO_USE }} --distribution-type bin
+      # Adding --distribution-type bin to ensure it fetches the binary distribution
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x ./gradlew
+
+    # Recommended: Cache Gradle dependencies downloaded by the wrapper.
+    # This cache uses the wrapper files generated in the previous step and other project build files.
+    - name: Cache Gradle packages
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper/dists
+        # MODIFIED KEY: Added a version suffix '-v1' to help invalidate the cache if needed.
+        # Increment this suffix (e.g., -v2, -v3) or use a dynamic value like ${{ github.run_id }}
+        # if you suspect stale cache issues and need to force a fresh download.
+        key: ${{ runner.os }}-gradle-${{ env.GRADLE_VERSION_TO_USE }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}-v1
+        restore-keys: |
+          ${{ runner.os }}-gradle-${{ env.GRADLE_VERSION_TO_USE }}-
+
+    - name: Build with Gradle Wrapper
+      # Adding --stacktrace for more detailed error output if the build fails
+      run: ./gradlew assembleDebug --stacktrace
+
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: MrCoopersESP32 # Name of the artifact
+        path: app/build/outputs/apk/debug/MrCoopersESP32.apk # Path to the APK
+        if-no-files-found: error # Fail if APK not found
+
+#################### START OF FILE: app\build.gradle ####################
+
+plugins {
+    id 'com.android.application'
+    // id 'org.jetbrains.kotlin.android' // Uncomment if using Kotlin
+}
+
+android {
+    namespace 'com.example.mybasicapp'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.example.mybasicapp"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            // applicationVariants.all { variant ->
+            //     variant.outputs.all { output ->
+            //         def project = "MyBasicApp"
+            //         def SEP = "_"
+            //         def buildType = variant.buildType.name
+            //         def version = variant.versionName
+            //         def date = new Date();
+            //         def formattedDate = date.format('yyyyMMddHHmmss')
+            //         def newApkName = project + SEP + buildType + SEP + version + SEP + formattedDate + ".apk"
+            //         outputFileName = newApkName
+            //     }
+            // }
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8 // Or 11, 17 to match JDK in workflow
+        targetCompatibility JavaVersion.VERSION_1_8 // Or 11, 17
+    }
+    // If using Kotlin:
+    // kotlinOptions {
+    //    jvmTarget = '1.8' // Or '11', '17'
+    // }
+
+    // It's good practice to define signing configurations,
+    // but for a basic debug APK, it's not strictly necessary for this example.
+    // For release builds, you would need to set up signing.
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.12.0' // Or androidx.core:core for Java
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
+
+
+#################### START OF FILE: app\src\main\AndroidManifest.xml ####################
+
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"> <!-- Added tools for specific overrides if needed later -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.MyBasicApp">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".WebSocketService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+    </application>
+</manifest>
+
+#################### START OF FILE: app\src\main\java\com\example\mybasicapp\MainActivity.java ####################
+
+package com.example.mybasicapp;
+
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+
+import android.Manifest;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.util.Log;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.TextView;
+import android.widget.Toast;
+
+public class MainActivity extends AppCompatActivity {
+
+    private static final String TAG = "MainActivity";
+
+    private EditText editTextEspIp;
+    private Button buttonStartService, buttonStopService, buttonConnect, buttonDisconnect;
+    private TextView textViewStatus;
+    private TextView textViewLastMessage;
+
+    private boolean isServiceReceiverRegistered = false;
+
+    private final ActivityResultLauncher<String> requestPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), isGranted -> {
+                if (isGranted) {
+                    Toast.makeText(this, "Notifications permission granted", Toast.LENGTH_SHORT).show();
+                    // You can now start the service or trigger notifications that might have been pending
+                } else {
+                    Toast.makeText(this, "Notifications permission denied. App may not show alerts.", Toast.LENGTH_LONG).show();
+                }
+            });
+
+    private final BroadcastReceiver serviceUpdateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (WebSocketService.ACTION_STATUS_UPDATE.equals(action)) {
+                String status = intent.getStringExtra(WebSocketService.EXTRA_STATUS);
+                textViewStatus.setText("Status: " + status);
+                Log.d(TAG, "Service Status Update: " + status);
+                if ("Service Stopped".equals(status) || "Disconnected by user".equals(status) || status.startsWith("Connection Failed")) {
+                    buttonConnect.setEnabled(true);
+                    buttonDisconnect.setEnabled(false);
+                } else if ("Connected to ESP32".equals(status)) {
+                    buttonConnect.setEnabled(false);
+                    buttonDisconnect.setEnabled(true);
+                } else if (status.startsWith("Connecting to")) {
+                     buttonConnect.setEnabled(false);
+                     buttonDisconnect.setEnabled(false);
+                }
+            } else if (WebSocketService.ACTION_MESSAGE_RECEIVED.equals(action)) {
+                String title = intent.getStringExtra(WebSocketService.EXTRA_MESSAGE_TITLE);
+                String body = intent.getStringExtra(WebSocketService.EXTRA_MESSAGE_BODY);
+                textViewLastMessage.setText("Last Message: " + title + " - " + body);
+                Log.d(TAG, "Service Message Received: " + title + " - " + body);
+            }
+        }
+    };
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        editTextEspIp = findViewById(R.id.editTextEspIp);
+        buttonStartService = findViewById(R.id.buttonStartService);
+        buttonStopService = findViewById(R.id.buttonStopService);
+        buttonConnect = findViewById(R.id.buttonConnect);
+        buttonDisconnect = findViewById(R.id.buttonDisconnect);
+        textViewStatus = findViewById(R.id.textViewStatus);
+        textViewLastMessage = findViewById(R.id.textViewLastMessage);
+
+        askNotificationPermission(); // Ask on create
+
+        buttonStartService.setOnClickListener(v -> {
+            startWebSocketService();
+            buttonStartService.setEnabled(false);
+            buttonStopService.setEnabled(true);
+            buttonConnect.setEnabled(true); // Enable connect after service starts
+        });
+
+        buttonStopService.setOnClickListener(v -> {
+            stopWebSocketService();
+            buttonStartService.setEnabled(true);
+            buttonStopService.setEnabled(false);
+            buttonConnect.setEnabled(false);
+            buttonDisconnect.setEnabled(false);
+        });
+
+        buttonConnect.setOnClickListener(v -> {
+            String ipAddress = editTextEspIp.getText().toString().trim();
+            if (ipAddress.isEmpty()) {
+                Toast.makeText(MainActivity.this, "Please enter ESP32 IP Address", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            Intent serviceIntent = new Intent(this, WebSocketService.class);
+            serviceIntent.setAction(WebSocketService.ACTION_CONNECT);
+            serviceIntent.putExtra(WebSocketService.EXTRA_IP_ADDRESS, ipAddress);
+            startService(serviceIntent); // Use startService for commands to an already running service
+            buttonConnect.setEnabled(false); // Disable until status update
+            buttonDisconnect.setEnabled(false);
+        });
+
+        buttonDisconnect.setOnClickListener(v -> {
+            Intent serviceIntent = new Intent(this, WebSocketService.class);
+            serviceIntent.setAction(WebSocketService.ACTION_DISCONNECT);
+            startService(serviceIntent);
+            buttonConnect.setEnabled(true); // Re-enable connect button
+            buttonDisconnect.setEnabled(false);
+        });
+
+        // Initial button states
+        buttonStopService.setEnabled(false);
+        buttonConnect.setEnabled(false);
+        buttonDisconnect.setEnabled(false);
+    }
+
+    private void askNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+                    PackageManager.PERMISSION_GRANTED) {
+                if (shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                    Toast.makeText(this, "Notification permission is needed to show alerts from ESP32.", Toast.LENGTH_LONG).show();
+                    // Consider showing a dialog here explaining why the permission is needed.
+                    // For simplicity, requesting directly.
+                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+                } else {
+                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+                }
+            }
+        }
+    }
+
+    private void startWebSocketService() {
+        Intent serviceIntent = new Intent(this, WebSocketService.class);
+        serviceIntent.setAction(WebSocketService.ACTION_START_FOREGROUND_SERVICE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent);
+        } else {
+            startService(serviceIntent);
+        }
+        textViewStatus.setText("Status: Service Starting...");
+    }
+
+    private void stopWebSocketService() {
+        Intent serviceIntent = new Intent(this, WebSocketService.class);
+        serviceIntent.setAction(WebSocketService.ACTION_STOP_FOREGROUND_SERVICE);
+        startService(serviceIntent); // Send stop command
+        textViewStatus.setText("Status: Service Stopping...");
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!isServiceReceiverRegistered) {
+            IntentFilter filter = new IntentFilter();
+            filter.addAction(WebSocketService.ACTION_STATUS_UPDATE);
+            filter.addAction(WebSocketService.ACTION_MESSAGE_RECEIVED);
+            LocalBroadcastManager.getInstance(this).registerReceiver(serviceUpdateReceiver, filter);
+            isServiceReceiverRegistered = true;
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Consider unregistering if you only want updates when activity is visible.
+        // For this app, keeping it registered to see logs and last message is fine.
+        // If you unregister here, make sure to handle service state appropriately onResume.
+        // LocalBroadcastManager.getInstance(this).unregisterReceiver(serviceUpdateReceiver);
+        // isServiceReceiverRegistered = false;
+    }
+
+    @Override
+    protected void onDestroy() {
+        // If you want the service to stop when the app is fully closed from recents,
+        // you could call stopWebSocketService() here.
+        // However, a common use case for a foreground service is to keep running.
+        // For this example, we let the user explicitly stop the service via the button.
+        if (isServiceReceiverRegistered) {
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(serviceUpdateReceiver);
+            isServiceReceiverRegistered = false;
+        }
+        super.onDestroy();
+    }
+}
+
+#################### START OF FILE: app\src\main\java\com\example\mybasicapp\WebSocketService.java ####################
+
+package com.example.mybasicapp;
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
+import android.os.Build;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.util.Log;
+
+import androidx.annotation.Nullable;
+import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
+import okio.ByteString;
+
+public class WebSocketService extends Service {
+
+    private static final String TAG = "WebSocketService";
+    public static final String ACTION_START_FOREGROUND_SERVICE = "ACTION_START_FOREGROUND_SERVICE";
+    public static final String ACTION_STOP_FOREGROUND_SERVICE = "ACTION_STOP_FOREGROUND_SERVICE";
+    public static final String ACTION_CONNECT = "ACTION_CONNECT";
+    public static final String ACTION_DISCONNECT = "ACTION_DISCONNECT";
+    public static final String EXTRA_IP_ADDRESS = "EXTRA_IP_ADDRESS";
+
+    public static final String ACTION_STATUS_UPDATE = "com.example.mybasicapp.STATUS_UPDATE";
+    public static final String ACTION_MESSAGE_RECEIVED = "com.example.mybasicapp.MESSAGE_RECEIVED";
+    public static final String EXTRA_STATUS = "EXTRA_STATUS";
+    public static final String EXTRA_MESSAGE_TITLE = "EXTRA_MESSAGE_TITLE";
+    public static final String EXTRA_MESSAGE_BODY = "EXTRA_MESSAGE_BODY";
+
+
+    private static final String NOTIFICATION_CHANNEL_ID_SERVICE = "web_socket_service_channel";
+    private static final String NOTIFICATION_CHANNEL_ID_MESSAGES = "esp32_notifications"; // For actual alert notifications
+    private static final int SERVICE_NOTIFICATION_ID = 1;
+    private static final int MESSAGE_NOTIFICATION_ID = 101; // For messages from ESP32
+
+    private OkHttpClient httpClient;
+    private WebSocket webSocket;
+    private String currentIpAddress;
+    private Handler handler = new Handler(Looper.getMainLooper());
+    private boolean isServiceStarted = false;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        Log.d(TAG, "Service onCreate");
+        httpClient = new OkHttpClient.Builder()
+                .pingInterval(30, TimeUnit.SECONDS)
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true) // Important for robustness
+                .build();
+        createNotificationChannel(NOTIFICATION_CHANNEL_ID_SERVICE, "WebSocket Service Status", NotificationManager.IMPORTANCE_LOW);
+        createNotificationChannel(NOTIFICATION_CHANNEL_ID_MESSAGES, getString(R.string.channel_name), NotificationManager.IMPORTANCE_HIGH);
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null) {
+            String action = intent.getAction();
+            Log.d(TAG, "onStartCommand, Action: " + action);
+
+            if (ACTION_START_FOREGROUND_SERVICE.equals(action)) {
+                if (!isServiceStarted) {
+                    startForegroundServiceWithNotification("Service Started. Not connected.");
+                    isServiceStarted = true;
+                }
+            } else if (ACTION_STOP_FOREGROUND_SERVICE.equals(action)) {
+                stopService();
+                return START_NOT_STICKY; // Ensure it doesn't restart automatically
+            } else if (ACTION_CONNECT.equals(action) && isServiceStarted) {
+                currentIpAddress = intent.getStringExtra(EXTRA_IP_ADDRESS);
+                if (currentIpAddress != null && !currentIpAddress.isEmpty()) {
+                    connectWebSocket("ws://" + currentIpAddress + "/ws");
+                } else {
+                    Log.e(TAG, "IP Address is null or empty");
+                    sendBroadcastStatus("Error: IP Address missing");
+                }
+            } else if (ACTION_DISCONNECT.equals(action) && isServiceStarted) {
+                disconnectWebSocket();
+            }
+        }
+        // If the service is killed and restarted, resend the last intent or null
+        return START_STICKY;
+    }
+
+
+    private void startForegroundServiceWithNotification(String statusText) {
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
+                notificationIntent, PendingIntent.FLAG_IMMUTABLE);
+
+        Notification notification = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID_SERVICE)
+                .setContentTitle("ESP32 Sync Service")
+                .setContentText(statusText)
+                .setSmallIcon(R.drawable.ic_stat_service) // Create a small icon for service status
+                .setContentIntent(pendingIntent)
+                .setOngoing(true) // Makes the notification non-dismissable
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build();
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(SERVICE_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+        } else {
+            startForeground(SERVICE_NOTIFICATION_ID, notification);
+        }
+        Log.d(TAG, "Service started in foreground.");
+    }
+
+    private void updateServiceNotification(String text) {
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager == null || !isServiceStarted) return;
+
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
+                notificationIntent, PendingIntent.FLAG_IMMUTABLE);
+
+        Notification notification = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID_SERVICE)
+                .setContentTitle("ESP32 Sync Service")
+                .setContentText(text)
+                .setSmallIcon(R.drawable.ic_stat_service)
+                .setContentIntent(pendingIntent)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build();
+        manager.notify(SERVICE_NOTIFICATION_ID, notification);
+    }
+
+
+    private void connectWebSocket(String wsUrl) {
+        if (webSocket != null) {
+            webSocket.close(1000, "Reconnecting");
+            webSocket = null;
+        }
+
+        Request request = new Request.Builder().url(wsUrl).build();
+        sendBroadcastStatus("Connecting to " + wsUrl);
+        updateServiceNotification("Connecting to ESP32...");
+        Log.i(TAG, "Attempting to connect to: " + wsUrl);
+
+        webSocket = httpClient.newWebSocket(request, new WebSocketListener() {
+            @Override
+            public void onOpen(WebSocket ws, Response response) {
+                super.onOpen(ws, response);
+                Log.i(TAG, "WebSocket Opened");
+                sendBroadcastStatus("Connected to ESP32");
+                updateServiceNotification("Connected to ESP32");
+                // ws.send("Hello ESP32 from Android Service!"); // Optional: send initial message
+            }
+
+            @Override
+            public void onMessage(WebSocket ws, String text) {
+                super.onMessage(ws, text);
+                Log.i(TAG, "Receiving: " + text);
+                try {
+                    JSONObject json = new JSONObject(text);
+                    String title = json.optString("title", "ESP32 Notification");
+                    String message = json.optString("message", "Received a new message.");
+                    sendBroadcastMessage(title, message);
+                    showDataNotification(title, message);
+                } catch (JSONException e) {
+                    Log.e(TAG, "Error parsing JSON from WebSocket: " + e.getMessage());
+                    sendBroadcastMessage("ESP32 Message", text); // Send raw if not JSON
+                    showDataNotification("ESP32 Message", text);
+                }
+            }
+
+            @Override
+            public void onMessage(WebSocket ws, ByteString bytes) {
+                super.onMessage(ws, bytes);
+                Log.i(TAG, "Receiving bytes: " + bytes.hex());
+            }
+
+            @Override
+            public void onClosing(WebSocket ws, int code, String reason) {
+                super.onClosing(ws, code, reason);
+                Log.i(TAG, "Closing: " + code + " / " + reason);
+                ws.close(1000, null);
+            }
+
+            @Override
+            public void onClosed(WebSocket ws, int code, String reason) {
+                super.onClosed(ws, code, reason);
+                Log.i(TAG, "Closed: " + code + " / " + reason);
+                sendBroadcastStatus("Disconnected");
+                updateServiceNotification("Disconnected from ESP32");
+                WebSocketService.this.webSocket = null; // Clear the reference
+                // Optional: Implement retry logic here if desired
+            }
+
+            @Override
+            public void onFailure(WebSocket ws, Throwable t, Response response) {
+                super.onFailure(ws, t, response);
+                String errorMsg = (t != null && t.getMessage() != null) ? t.getMessage() : "Unknown error";
+                Log.e(TAG, "Failure: " + errorMsg, t);
+                sendBroadcastStatus("Connection Failed: " + errorMsg);
+                updateServiceNotification("Connection Failed");
+                WebSocketService.this.webSocket = null; // Clear the reference
+                 // Implement retry logic with backoff if connection fails
+                if (isServiceStarted && currentIpAddress != null && !currentIpAddress.isEmpty()) {
+                    handler.postDelayed(() -> {
+                        Log.d(TAG, "Retrying connection to: " + currentIpAddress);
+                        connectWebSocket("ws://" + currentIpAddress + "/ws");
+                    }, 5000); // Retry after 5 seconds
+                }
+            }
+        });
+    }
+
+    private void disconnectWebSocket() {
+        if (webSocket != null) {
+            webSocket.close(1000, "User disconnected");
+            webSocket = null;
+        }
+        sendBroadcastStatus("Disconnected by user");
+        updateServiceNotification("Disconnected by user");
+        Log.i(TAG, "WebSocket Disconnected by user action.");
+    }
+
+
+    private void sendBroadcastStatus(String status) {
+        Intent intent = new Intent(ACTION_STATUS_UPDATE);
+        intent.putExtra(EXTRA_STATUS, status);
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+    }
+
+    private void sendBroadcastMessage(String title, String body) {
+        Intent intent = new Intent(ACTION_MESSAGE_RECEIVED);
+        intent.putExtra(EXTRA_MESSAGE_TITLE, title);
+        intent.putExtra(EXTRA_MESSAGE_BODY, body);
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+    }
+
+    private void createNotificationChannel(String channelId, String channelName, int importance) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(channelId, channelName, importance);
+            if (channelId.equals(NOTIFICATION_CHANNEL_ID_MESSAGES)) {
+                channel.setDescription(getString(R.string.channel_description));
+            } else {
+                 channel.setDescription("Channel for WebSocket Service status");
+            }
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            if (notificationManager != null) {
+                notificationManager.createNotificationChannel(channel);
+            }
+        }
+    }
+
+    private void showDataNotification(String title, String message) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "POST_NOTIFICATIONS permission not granted. Cannot show data notification.");
+                // The service cannot request permission directly. Activity should handle it.
+                return;
+            }
+        }
+
+        Intent intent = new Intent(this, MainActivity.class); // Tapping notification opens MainActivity
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0 /* Request code */, intent,
+                PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE);
+
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID_MESSAGES)
+                .setSmallIcon(R.drawable.ic_stat_message) // Create a small icon for messages
+                .setContentTitle(title)
+                .setContentText(message)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent);
+
+        NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
+        try {
+            notificationManager.notify(MESSAGE_NOTIFICATION_ID, builder.build());
+        } catch (SecurityException e) {
+            Log.e(TAG, "SecurityException while trying to post data notification: " + e.getMessage());
+        }
+    }
+
+
+    private void stopService() {
+        Log.d(TAG, "stopService called");
+        disconnectWebSocket(); // Ensure WebSocket is closed
+        if (isServiceStarted) {
+            stopForeground(true); // true to remove the notification
+            stopSelf(); // Stop the service instance
+            isServiceStarted = false;
+            sendBroadcastStatus("Service Stopped");
+        }
+    }
+
+
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null; // We are not using binding, so return null
+    }
+
+    @Override
+    public void onDestroy() {
+        Log.d(TAG, "Service onDestroy");
+        stopService(); // Ensure everything is cleaned up
+        if (httpClient != null) {
+            httpClient.dispatcher().executorService().shutdown();
+            httpClient.connectionPool().evictAll();
+            try {
+                if (httpClient.cache() != null) {
+                    httpClient.cache().close();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error closing OkHttp cache", e);
+            }
+        }
+        super.onDestroy();
+    }
+}
+
+#################### START OF FILE: app\src\main\res\drawable\ic_stat_message.xml ####################
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24.0"
+    android:viewportHeight="24.0"
+    android:tint="?attr/colorControlNormal">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M20,2L4,2c-1.1,0 -1.99,0.9 -1.99,2L2,22l4,-4h14c1.1,0 2,-0.9 2,-2L22,4c0,-1.1 -0.9,-2 -2,-2zM18,14L6,14v-2h12v2zM18,11L6,11L6,9h12v2zM18,8L6,8L6,6h12v2z"/>
+</vector>
+
+#################### START OF FILE: app\src\main\res\drawable\ic_stat_service.xml ####################
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24.0"
+    android:viewportHeight="24.0"
+    android:tint="?attr/colorControlNormal"> <!-- Or a specific color -->
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM12,20c-4.41,0 -8,-3.59 -8,-8s3.59,-8 8,-8 8,3.59 8,8 -3.59,8 -8,8zM13,7h-2v6h2V7zm0,8h-2v2h2v-2z"/>
+</vector>
+
+#################### START OF FILE: app\src\main\res\layout\activity_main.xml ####################
+
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    tools:context=".MainActivity">
+
+    <EditText
+        android:id="@+id/editTextEspIp"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:hint="ESP32 IP (e.g., 192.168.1.100)"
+        android:inputType="textUri"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <LinearLayout
+        android:id="@+id/layoutServiceControls"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/editTextEspIp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <Button
+            android:id="@+id/buttonStartService"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Start Svc"
+            android:layout_marginEnd="4dp"/>
+
+        <Button
+            android:id="@+id/buttonStopService"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Stop Svc"
+            android:layout_marginStart="4dp"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/layoutConnectionControls"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/layoutServiceControls"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <Button
+            android:id="@+id/buttonConnect"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Connect"
+            android:layout_marginEnd="4dp"/>
+
+        <Button
+            android:id="@+id/buttonDisconnect"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Disconnect"
+            android:layout_marginStart="4dp"/>
+    </LinearLayout>
+
+
+    <TextView
+        android:id="@+id/textViewStatus"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Status: Idle"
+        android:layout_marginTop="16dp"
+        android:textSize="18sp"
+        app:layout_constraintTop_toBottomOf="@id/layoutConnectionControls"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
+        android:id="@+id/textViewLastMessage"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Last Message: None"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/textViewStatus"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
+
+#################### START OF FILE: app\src\main\res\values\colors.xml ####################
+
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Theme Colors for MyBasicApp -->
+    <color name="my_app_primary">#1A535C</color> <!-- A dark teal/green, adjust to your liking -->
+    <color name="my_app_primary_dark">#0E3F47</color> <!-- A darker shade for status bar -->
+    <color name="my_app_accent">#F7B801</color> <!-- An accent color, e.g., a gold/yellow -->
+
+    <!-- Standard Android/Material Colors (can be used as fallbacks or for other UI elements) -->
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Text Colors -->
+    <color name="text_on_primary">#FFFFFF</color>
+    <color name="text_on_accent">#000000</color>
+</resources>
+
+
+#################### START OF FILE: app\src\main\res\values\strings.xml ####################
+
+<resources>
+    <string name="app_name">Mr Coopers ESP32</string>
+    <!-- For Notification Channel for ESP32 messages -->
+    <string name="channel_name">ESP32 Notifications</string>
+    <string name="channel_description">Notifications received from the local ESP32 device.</string>
+</resources>
+
+#################### START OF FILE: app\src\main\res\values\themes.xml ####################
+
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.MyBasicApp" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/my_app_primary</item>
+        <item name="colorPrimaryVariant">@color/my_app_primary_dark</item> <!-- Used for status bar by default -->
+        <item name="colorOnPrimary">@color/text_on_primary</item> <!-- Text/icon color on primary color -->
+
+        <!-- Secondary brand color (accent color). -->
+        <item name="colorSecondary">@color/my_app_accent</item>
+        <item name="colorSecondaryVariant">@color/my_app_accent</item> <!-- Can be a darker/lighter shade of accent -->
+        <item name="colorOnSecondary">@color/text_on_accent</item> <!-- Text/icon color on secondary color -->
+
+        <!-- Status bar color. -->
+        <!-- By default, uses colorPrimaryVariant. You can override it explicitly. -->
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorPrimaryVariant</item>
+
+        <!-- Customize your theme here. -->
+        <!-- For example, to remove the action bar if you're using a Toolbar in your layout: -->
+        <!-- <item name="windowActionBar">false</item> -->
+        <!-- <item name="windowNoTitle">true</item> -->
+
+        <!-- You can also define other attributes like windowBackground, textColor, etc. -->
+        <!-- <item name="android:windowBackground">@color/white</item> -->
+    </style>
+
+    <!-- Optional: A theme for a splash screen if you implement one -->
+    <!--
+    <style name="Theme.MyBasicApp.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/my_app_primary</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_round</item> Comment out if no round launcher or use ic_launcher
+        <item name="windowSplashScreenAnimationDuration">1000</item>
+        <item name="postSplashScreenTheme">@style/Theme.MyBasicApp</item>
+    </style>
+    -->
+</resources>
+
+#################### START OF FILE: app\src\main\res\xml\backup_rules.xml ####################
+
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- TODO Remove the following backup rules src/main/AndroidManifext.xml#fullBackupContent-->
+    <!-- <include domain="sharedpref" path="."/> -->
+    <!-- <exclude domain="sharedpref" path="device.xml"/> -->
+</full-backup-content>
+
+
+#################### START OF FILE: app\src\main\res\xml\data_extraction_rules.xml ####################
+
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- TODO: Add cloud backup rules here. -->
+        <!--
+        <include domain="sharedpref" path="."/>
+        <exclude domain="sharedpref" path="device.xml"/>
+        -->
+    </cloud-backup>
+    <device-transfer>
+        <!-- TODO: Add device transfer rules here. -->
+        <!--
+        <include domain="sharedpref" path="."/>
+        <exclude domain="sharedpref" path="device.xml"/>
+        -->
+    </device-transfer>
+</data-extraction-rules>
+
+
+#################### START OF FILE: build.gradle ####################
+
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+plugins {
+    // Apply the Android Application plugin to this project.
+    // Make sure version is compatible with your chosen Gradle version and AGP features you use.
+    id 'com.android.application' version '8.2.1' apply false // Example AGP version
+    // id 'org.jetbrains.kotlin.android' version '1.9.22' apply false // If using Kotlin
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
+
+
+#################### START OF FILE: gradle\wrapper\gradle-wrapper.properties ####################
+
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip # Adjust version
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+
+
+#################### START OF FILE: gradle.properties ####################
+
+# Gradle JVM ARGS
+# org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8 # Optional: Adjust memory if needed
+
+# AndroidX Properties
+android.useAndroidX=true
+android.enableJetifier=true
+
+
+#################### START OF FILE: settings.gradle ####################
+
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "MyBasicApp"
+include ':app'
