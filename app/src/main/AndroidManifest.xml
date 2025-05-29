@@ -8,7 +8,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MyBasicApp"> <!-- You might need to create this style or use a default one -->
+        android:theme="@style/Theme.MyBasicApp"> <!-- Ensure this theme exists or use a default one -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
