@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.MyBasicApp" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/my_app_primary</item>
+        <item name="colorPrimaryVariant">@color/my_app_primary_dark</item> <!-- Used for status bar by default -->
+        <item name="colorOnPrimary">@color/text_on_primary</item> <!-- Text/icon color on primary color -->
+
+        <!-- Secondary brand color (accent color). -->
+        <item name="colorSecondary">@color/my_app_accent</item>
+        <item name="colorSecondaryVariant">@color/my_app_accent</item> <!-- Can be a darker/lighter shade of accent -->
+        <item name="colorOnSecondary">@color/text_on_accent</item> <!-- Text/icon color on secondary color -->
+
+        <!-- Status bar color. -->
+        <!-- By default, uses colorPrimaryVariant. You can override it explicitly. -->
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorPrimaryVariant</item>
+
+        <!-- Customize your theme here. -->
+        <!-- For example, to remove the action bar if you're using a Toolbar in your layout: -->
+        <!-- <item name="windowActionBar">false</item> -->
+        <!-- <item name="windowNoTitle">true</item> -->
+
+        <!-- You can also define other attributes like windowBackground, textColor, etc. -->
+        <!-- <item name="android:windowBackground">@color/white</item> -->
+    </style>
+
+    <!-- Optional: A theme for a splash screen if you implement one -->
+    <!--
+    <style name="Theme.MyBasicApp.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/my_app_primary</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_round</item> Comment out if no round launcher or use ic_launcher
+        <item name="windowSplashScreenAnimationDuration">1000</item>
+        <item name="postSplashScreenTheme">@style/Theme.MyBasicApp</item>
+    </style>
+    -->
+</resources>
