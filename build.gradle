@@ -21,13 +21,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // If you also want to rename the release APK, you would add a similar
-            // configuration in the androidComponents block targeting the 'release' build type.
         }
         debug {
             // APK naming is now handled by the androidComponents block below
-            // You can add other debug-specific configurations here if needed
-            // e.g., applicationIdSuffix ".debug"
         }
     }
 
@@ -35,42 +31,27 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_17
         targetCompatibility JavaVersion.VERSION_1_17
     }
-    // If using Kotlin (which this project is not currently):
-    // kotlinOptions {
-    //    jvmTarget = '17' // Match targetCompatibility
-    // }
 }
 
-// androidComponents block is used for customizing variant outputs (AGP 7.0+)
-// This should be placed at the same level as the `android {}` and `dependencies {}` blocks.
 androidComponents {
-    // selector().all() // for all variants
-    // selector().withBuildType("debug") // for only debug variants
-    // selector().withName("debug") // equivalent for build type name
     onVariants(selector().withBuildType("debug")) { variant ->
-        // 'variant' is of type com.android.build.api.variant.ApplicationVariant for app modules
-        // For a typical application build, there's one primary output per variant.
-        // 'variant.outputs' is a List<VariantOutput>.
-        // Each 'VariantOutput' has a 'outputFileName: Property<String>'.
         variant.outputs.forEach { output ->
-            // In most app scenarios, there's one main APK output.
-            // We are setting the name for all outputs of the debug variant.
-            // If you had multiple splits, this would apply to all of them unless further filtered.
-            // For a standard single APK, this is fine.
             if (output.outputType.get() == com.android.build.api.variant.VariantOutput.OutputType.SINGLE.INSTANCE.type) {
-                 output.outputFileName.set("MrCoopersESP32.apk")
+                output.outputFileName.set("MrCoopersESP32.apk")
             }
-            // A simpler way if you know there's only one output, or want to affect all:
-            // output.outputFileName.set("MrCoopersESP32.apk")
         }
     }
 }
 
 dependencies {
-    implementation 'androidx.core:core:1.12.0' // Changed from core-ktx to core for Java project
+    implementation 'androidx.core:core:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+
+    // OkHttp for WebSocket communication
+    implementation("com.squareup.okhttp3:okhttp:4.12.0") // Ensure this line is added/correct
+
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
