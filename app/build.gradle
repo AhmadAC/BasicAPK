@@ -29,8 +29,8 @@ android {
 
     compileOptions {
         // Align with the JDK version used in the CI workflow (JDK 17)
-        sourceCompatibility JavaVersion.VERSION_1_17
-        targetCompatibility JavaVersion.VERSION_1_17
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 }
 
