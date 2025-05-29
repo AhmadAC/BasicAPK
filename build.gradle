@@ -1,6 +1,6 @@
 plugins {
     id 'com.android.application'
-    // id 'org.jetbrains.kotlin.android' // Uncomment if using Kotlin
+    // id 'org.jetbrains.kotlin.android' // This project uses Java, so Kotlin plugin is not needed
 }
 
 android {
@@ -23,19 +23,24 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
-            // APK naming is now handled by the androidComponents block below
+            // APK naming is handled by the androidComponents block below
         }
     }
 
     compileOptions {
+        // Align with the JDK version used in the CI workflow (JDK 17)
         sourceCompatibility JavaVersion.VERSION_1_17
         targetCompatibility JavaVersion.VERSION_1_17
     }
 }
 
+// This block customizes the output APK name for debug builds.
+// It was previously (and incorrectly) in the root build.gradle.
 androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
         variant.outputs.forEach { output ->
+            // Ensure we are modifying the main APK output
+            // com.android.build.api.variant.VariantOutput.OutputType.SINGLE is the enum for the main APK.
             if (output.outputType.get() == com.android.build.api.variant.VariantOutput.OutputType.SINGLE.INSTANCE.type) {
                 output.outputFileName.set("MrCoopersESP32.apk")
             }
@@ -44,13 +49,15 @@ androidComponents {
 }
 
 dependencies {
+    // Use 'androidx.core:core' for Java projects. 'core-ktx' is for Kotlin.
     implementation 'androidx.core:core:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
-    // OkHttp for WebSocket communication
-    implementation("com.squareup.okhttp3:okhttp:4.12.0") // Ensure this line is added/correct
+    // Add OkHttp dependency, required for WebSocketService.java.
+    // This was previously (and incorrectly) in the root build.gradle's dependencies.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
