@@ -11,9 +11,9 @@ jobs:
     env:
       # Define the Gradle version for the wrapper and build.
       # Choose a version compatible with your Android Gradle Plugin (AGP).
-      # For AGP 8.2.1 (used in build.gradle example), Gradle 8.2 or higher is typically needed.
+      # For AGP 8.4.0 (used in root build.gradle), Gradle 8.6 or higher is needed.
       # Check AGP release notes for compatibility.
-      GRADLE_VERSION_TO_USE: '8.5' # Example: Use Gradle 8.5
+      GRADLE_VERSION_TO_USE: '8.6' # Updated to Gradle 8.6
 
     runs-on: ubuntu-latest
 

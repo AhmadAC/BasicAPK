@@ -114,7 +114,7 @@ jobs:
 
 plugins {
     id 'com.android.application'
-    // id 'org.jetbrains.kotlin.android' // Uncomment if using Kotlin
+    // id 'org.jetbrains.kotlin.android' // This project uses Java, so Kotlin plugin is not needed
 }
 
 android {
@@ -137,44 +137,46 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
-            // applicationVariants.all { variant ->
-            //     variant.outputs.all { output ->
-            //         def project = "MyBasicApp"
-            //         def SEP = "_"
-            //         def buildType = variant.buildType.name
-            //         def version = variant.versionName
-            //         def date = new Date();
-            //         def formattedDate = date.format('yyyyMMddHHmmss')
-            //         def newApkName = project + SEP + buildType + SEP + version + SEP + formattedDate + ".apk"
-            //         outputFileName = newApkName
-            //     }
-            // }
+            // APK naming is handled by the androidComponents block below
         }
     }
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8 // Or 11, 17 to match JDK in workflow
-        targetCompatibility JavaVersion.VERSION_1_8 // Or 11, 17
-    }
-    // If using Kotlin:
-    // kotlinOptions {
-    //    jvmTarget = '1.8' // Or '11', '17'
-    // }
 
-    // It's good practice to define signing configurations,
-    // but for a basic debug APK, it's not strictly necessary for this example.
-    // For release builds, you would need to set up signing.
+    compileOptions {
+        // Align with the JDK version used in the CI workflow (JDK 17)
+        sourceCompatibility JavaVersion.VERSION_1_17
+        targetCompatibility JavaVersion.VERSION_1_17
+    }
+}
+
+// This block customizes the output APK name for debug builds.
+// It was previously (and incorrectly) in the root build.gradle.
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.outputs.forEach { output ->
+            // Ensure we are modifying the main APK output
+            // com.android.build.api.variant.VariantOutput.OutputType.SINGLE is the enum for the main APK.
+            if (output.outputType.get() == com.android.build.api.variant.VariantOutput.OutputType.SINGLE.INSTANCE.type) {
+                output.outputFileName.set("MrCoopersESP32.apk")
+            }
+        }
+    }
 }
 
 dependencies {
-    implementation 'androidx.core:core-ktx:1.12.0' // Or androidx.core:core for Java
+    // Use 'androidx.core:core' for Java projects. 'core-ktx' is for Kotlin.
+    implementation 'androidx.core:core:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+
+    // Add OkHttp dependency, required for WebSocketService.java.
+    // This was previously (and incorrectly) in the root build.gradle's dependencies.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }
-
 
 #################### START OF FILE: app\src\main\AndroidManifest.xml ####################
 
@@ -987,63 +989,15 @@ public class WebSocketService extends Service {
 
 #################### START OF FILE: build.gradle ####################
 
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
-    id 'com.android.application'
-    // id 'org.jetbrains.kotlin.android' // Uncomment if using Kotlin
-}
+    // Define the Android Gradle Plugin version. 'apply false' means it's not applied to the root project,
+    // but makes this version available to sub-projects like ':app'.
+    // AGP 8.4.0 is a stable version compatible with Gradle 8.5.
+    id("com.android.application") version "8.4.0" apply false
 
-android {
-    namespace 'com.example.mybasicapp'
-    compileSdk 34
-
-    defaultConfig {
-        applicationId "com.example.mybasicapp"
-        minSdk 21
-        targetSdk 34
-        versionCode 1
-        versionName "1.0"
-
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-        }
-        debug {
-            // APK naming is now handled by the androidComponents block below
-        }
-    }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_17
-        targetCompatibility JavaVersion.VERSION_1_17
-    }
-}
-
-androidComponents {
-    onVariants(selector().withBuildType("debug")) { variant ->
-        variant.outputs.forEach { output ->
-            if (output.outputType.get() == com.android.build.api.variant.VariantOutput.OutputType.SINGLE.INSTANCE.type) {
-                output.outputFileName.set("MrCoopersESP32.apk")
-            }
-        }
-    }
-}
-
-dependencies {
-    implementation 'androidx.core:core:1.12.0'
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.11.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-
-    // OkHttp for WebSocket communication
-    implementation("com.squareup.okhttp3:okhttp:4.12.0") // Ensure this line is added/correct
-
-    testImplementation 'junit:junit:4.13.2'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    // If you were using Kotlin (which this project is not, based on .java files and dependencies):
+    // id("org.jetbrains.kotlin.android") version "1.9.23" apply false // Check for latest compatible Kotlin version
 }
 
 #################### START OF FILE: gradle\wrapper\gradle-wrapper.properties ####################
