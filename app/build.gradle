@@ -40,8 +40,8 @@ androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
         variant.outputs.forEach { output ->
             // Ensure we are modifying the main APK output
-            // com.android.build.api.variant.VariantOutput.OutputType.SINGLE is the enum for the main APK.
-            if (output.outputType.get() == com.android.build.api.variant.VariantOutput.OutputType.SINGLE.INSTANCE.type) {
+            // Correctly compare the outputType enum directly
+            if (output.outputType == com.android.build.api.variant.VariantOutputConfiguration.OutputType.SINGLE) {
                 output.outputFileName.set("MrCoopersESP32.apk")
             }
         }
