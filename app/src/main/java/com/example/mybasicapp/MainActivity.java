@@ -17,6 +17,7 @@ import android.net.nsd.NsdServiceInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.TextUtils; // ### NEW ###
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -39,17 +40,19 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
 
     // mDNS Configuration Constants
     private static final String OTA_SERVICE_TYPE = "_http._tcp";
-    private static final String OTA_SERVICE_NAME_FILTER = "mrcoopersesp";
+    private static final String OTA_SERVICE_NAME_FILTER = "mrcoopersesp"; // Matches ESP32 MDNS_TARGET_HOSTNAME
 
-    private static final String MAIN_APP_WS_SERVICE_TYPE = "_myespwebsocket._tcp";
-    private static final String MAIN_APP_WS_SERVICE_NAME_FILTER = "ESP32 Motion WebSocket";
+    private static final String MAIN_APP_WS_SERVICE_TYPE = "_myespwebsocket._tcp"; // Matches ESP32 WEBSOCKET_MDNS_SERVICE_TYPE
+    // ### MODIFIED ### This filter should match the ESP32's mDNS hostname (instance name for the service)
+    private static final String MAIN_APP_WS_SERVICE_NAME_FILTER = "mrcoopersesp"; 
     private static final String ESP_WEBSOCKET_PATH = "/ws";
+    private static final int ESP_DEFAULT_PORT = 80; // ### NEW ###
 
     private enum MonitorMode {
         OTA,
         MAIN_APP_WS
     }
-    private MonitorMode currentMonitorMode = MonitorMode.MAIN_APP_WS; // Default
+    private MonitorMode currentMonitorMode = MonitorMode.MAIN_APP_WS;
 
     private EditText editTextEspIpDisplay;
     private Button buttonStartStopDiscovery;
@@ -60,15 +63,16 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     private RadioGroup radioGroupMonitorMode;
     private RadioButton radioButtonOta, radioButtonMainApp;
 
-    private boolean isServiceReceiverRegistered = false; // For WebSocketService
+    private boolean isServiceReceiverRegistered = false;
     private StringBuilder statusLog = new StringBuilder();
-    private StringBuilder messageLog = new StringBuilder(); // For WebSocketService
+    private StringBuilder messageLog = new StringBuilder();
 
     private ActivityResultLauncher<String> createFileLauncher;
     private NsdHelper nsdHelper;
     private NsdServiceInfo resolvedEspServiceInfo = null;
-    private String activeDiscoveryServiceType = null; // Current type being searched by NsdHelper
-    private boolean isWebSocketServiceActive = false; // Is WebSocketService started and connected
+    private String activeDiscoveryServiceType = null;
+    private boolean isWebSocketServiceActive = false;
+    private boolean manualIpEntryMode = false; // ### NEW ###
 
     private final ActivityResultLauncher<String> requestPermissionLauncher =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), isGranted -> {
@@ -98,8 +102,23 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
 
                 if ("Service Stopped".equals(status)) {
                     isWebSocketServiceActive = false;
-                    updateUIForWsDisconnected(); // Or a more specific state
-                } else if (status.startsWith("Connection Failed") || "Disconnected".equals(status) || "Disconnected by user".equals(status)) {
+                    updateUIForWsDisconnected();
+                } else if (status.startsWith("Connection Failed")) { // ### MODIFIED ### More specific handling for failed state
+                    isWebSocketServiceActive = false;
+                    if (resolvedEspServiceInfo == null && currentMonitorMode == MonitorMode.MAIN_APP_WS) {
+                        // If connection failed AND we don't have an mDNS resolved service, re-enable manual input
+                        editTextEspIpDisplay.setEnabled(true);
+                        editTextEspIpDisplay.setFocusableInTouchMode(true);
+                        editTextEspIpDisplay.setHint("Conn. Failed. Retry or enter address.");
+                        editTextEspIpDisplay.setText(""); // Clear old resolved info
+                        manualIpEntryMode = true;
+                        buttonAction.setText("Connect WS");
+                        buttonAction.setEnabled(true);
+                        textViewStatus.setText("Status (WS): " + status + ". Enter address or discover.");
+                    } else {
+                         updateUIForWsDisconnected(); // Handles cases where resolvedEspServiceInfo might exist
+                    }
+                } else if ("Disconnected".equals(status) || "Disconnected by user".equals(status)) {
                     isWebSocketServiceActive = false;
                     updateUIForWsDisconnected();
                 } else if ("Connected to ESP32".equals(status)) {
@@ -107,7 +126,9 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
                 } else if (status.startsWith("Connecting to")) {
                     updateUIForWsConnecting();
                 }
-                textViewStatus.setText("Status (WS): " + status);
+                if (!status.startsWith("Connection Failed")) { // Avoid double-setting status text if already handled
+                    textViewStatus.setText("Status (WS): " + status);
+                }
 
             } else if (WebSocketService.ACTION_MESSAGE_RECEIVED.equals(action)) {
                 String title = intent.getStringExtra(WebSocketService.EXTRA_MESSAGE_TITLE);
@@ -129,17 +150,11 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         radioGroupMonitorMode = findViewById(R.id.radioGroupMonitorMode);
         radioButtonOta = findViewById(R.id.radioButtonOta);
         radioButtonMainApp = findViewById(R.id.radioButtonMainApp);
-        buttonStartStopDiscovery = findViewById(R.id.buttonStartService); // Will rename in UI
-        buttonAction = findViewById(R.id.buttonConnect); // Will rename / change function
+        buttonStartStopDiscovery = findViewById(R.id.buttonStartService);
+        buttonAction = findViewById(R.id.buttonConnect);
         buttonSaveLog = findViewById(R.id.buttonSaveLog);
         textViewStatus = findViewById(R.id.textViewStatus);
         textViewLastMessage = findViewById(R.id.textViewLastMessage);
-
-        // --- Initial UI Setup ---
-        editTextEspIpDisplay.setHint("Service Info (Auto-Discovering...)");
-        editTextEspIpDisplay.setEnabled(false);
-        editTextEspIpDisplay.setFocusable(false);
-        buttonStartStopDiscovery.setText("Start Discovery");
 
         askNotificationPermission();
         nsdHelper = new NsdHelper(this, this);
@@ -153,13 +168,13 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         });
 
         radioGroupMonitorMode.setOnCheckedChangeListener((group, checkedId) -> {
-            stopActiveDiscoveryAndReset(); // Stop current discovery and clear resolved service
+            stopActiveDiscoveryAndReset();
             if (checkedId == R.id.radioButtonOta) {
                 currentMonitorMode = MonitorMode.OTA;
             } else if (checkedId == R.id.radioButtonMainApp) {
                 currentMonitorMode = MonitorMode.MAIN_APP_WS;
             }
-            updateUIForInitialState(); // Reset UI to reflect new mode
+            updateUIForInitialState();
         });
 
         buttonStartStopDiscovery.setOnClickListener(v -> {
@@ -170,14 +185,12 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             }
         });
 
-        buttonAction.setOnClickListener(v -> {
-            if (resolvedEspServiceInfo == null) {
-                Toast.makeText(this, "No service found yet. Start discovery.", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
+        buttonAction.setOnClickListener(v -> { // ### MODIFIED ### For manual WS connection
             if (currentMonitorMode == MonitorMode.OTA) {
-                // Open Web Page
+                if (resolvedEspServiceInfo == null) {
+                    Toast.makeText(this, "No OTA service found yet. Start discovery.", Toast.LENGTH_SHORT).show();
+                    return;
+                }
                 String hostAddress = resolvedEspServiceInfo.getHost().getHostAddress();
                 int port = resolvedEspServiceInfo.getPort();
                 String url = "http://" + hostAddress + ":" + port;
@@ -190,20 +203,47 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
                     statusLog.append(getCurrentTimestamp()).append(" ERR: No browser for OTA page ").append(url).append("\n");
                 }
             } else if (currentMonitorMode == MonitorMode.MAIN_APP_WS) {
-                // Connect or Disconnect WebSocket
-                if (isWebSocketServiceActive) {
-                    // Disconnect
+                if (isWebSocketServiceActive) { // Disconnect
                     Intent serviceIntent = new Intent(this, WebSocketService.class);
                     serviceIntent.setAction(WebSocketService.ACTION_DISCONNECT);
-                    startService(serviceIntent); // Service handles actual disconnect
+                    startService(serviceIntent);
                     statusLog.append(getCurrentTimestamp()).append(" CMD: Disconnect WebSocket\n");
-                    // UI will be updated by BroadcastReceiver
-                } else {
-                    // Connect
-                    if (resolvedEspServiceInfo.getHost() != null) {
-                        String wsUrl = "ws://" + resolvedEspServiceInfo.getHost().getHostAddress() + ":" + resolvedEspServiceInfo.getPort() + ESP_WEBSOCKET_PATH;
+                } else { // Connect
+                    String wsUrl = null;
+                    if (resolvedEspServiceInfo != null && resolvedEspServiceInfo.getHost() != null) {
+                        wsUrl = "ws://" + resolvedEspServiceInfo.getHost().getHostAddress() + ":" + resolvedEspServiceInfo.getPort() + ESP_WEBSOCKET_PATH;
+                        statusLog.append(getCurrentTimestamp()).append(" CMD: Auto Connect WebSocket to ").append(wsUrl).append("\n");
+                    } else if (manualIpEntryMode) {
+                        String manualHostInput = editTextEspIpDisplay.getText().toString().trim();
+                        if (!TextUtils.isEmpty(manualHostInput)) {
+                            if (manualHostInput.startsWith("ws://")) {
+                                wsUrl = manualHostInput; // Assume full URL
+                            } else {
+                                String hostPart = manualHostInput;
+                                int portPart = ESP_DEFAULT_PORT;
+                                if (manualHostInput.contains(":")) {
+                                    String[] parts = manualHostInput.split(":", 2);
+                                    hostPart = parts[0];
+                                    try {
+                                        if (parts.length > 1 && !TextUtils.isEmpty(parts[1])) {
+                                            portPart = Integer.parseInt(parts[1]);
+                                        }
+                                    } catch (NumberFormatException e) {
+                                        Toast.makeText(this, "Invalid port in address: " + manualHostInput, Toast.LENGTH_LONG).show();
+                                        return;
+                                    }
+                                }
+                                wsUrl = "ws://" + hostPart + ":" + portPart + ESP_WEBSOCKET_PATH;
+                            }
+                            Log.d(TAG, "Using manual WebSocket URL: " + wsUrl);
+                            statusLog.append(getCurrentTimestamp()).append(" CMD: Manual Connect WebSocket to ").append(wsUrl).append("\n");
+                        } else {
+                            Toast.makeText(this, "Enter ESP32 address or discover service.", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                    }
 
-                        // Ensure WebSocketService is running in foreground first
+                    if (wsUrl != null) {
                         Intent startFgIntent = new Intent(this, WebSocketService.class);
                         startFgIntent.setAction(WebSocketService.ACTION_START_FOREGROUND_SERVICE);
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -212,15 +252,13 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
                             startService(startFgIntent);
                         }
 
-                        // Then send connect command
                         Intent connectIntent = new Intent(this, WebSocketService.class);
                         connectIntent.setAction(WebSocketService.ACTION_CONNECT);
                         connectIntent.putExtra(WebSocketService.EXTRA_IP_ADDRESS, wsUrl);
                         startService(connectIntent);
-                        statusLog.append(getCurrentTimestamp()).append(" CMD: Connect WebSocket to ").append(wsUrl).append("\n");
-                        // UI will update via BroadcastReceiver
+                        // UI will update via BroadcastReceiver (updateUIForWsConnecting)
                     } else {
-                        Toast.makeText(this, "Service resolved but host is null!", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "No service found and no manual address entered.", Toast.LENGTH_SHORT).show();
                     }
                 }
             }
@@ -231,7 +269,6 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             createFileLauncher.launch(fileName);
         });
 
-        // Set initial state based on default mode
         if (currentMonitorMode == MonitorMode.MAIN_APP_WS) {
             radioButtonMainApp.setChecked(true);
         } else {
@@ -245,7 +282,8 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             Log.d(TAG, "Discovery already active for " + activeDiscoveryServiceType);
             return;
         }
-        resolvedEspServiceInfo = null; // Clear previous findings
+        resolvedEspServiceInfo = null;
+        editTextEspIpDisplay.setText(""); // Clear manual input field on new discovery
 
         if (currentMonitorMode == MonitorMode.OTA) {
             activeDiscoveryServiceType = OTA_SERVICE_TYPE;
@@ -255,7 +293,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             activeDiscoveryServiceType = MAIN_APP_WS_SERVICE_TYPE;
             nsdHelper.discoverServices(MAIN_APP_WS_SERVICE_NAME_FILTER, MAIN_APP_WS_SERVICE_TYPE);
             statusLog.append(getCurrentTimestamp()).append(" CMD: Start Discovery for Main App WS (").append(MAIN_APP_WS_SERVICE_NAME_FILTER).append(")\n");
-            textViewLastMessage.setText("Last WS Msg: None"); // Reset
+            textViewLastMessage.setText("Last WS Msg: None");
         }
         updateUIForDiscovering();
     }
@@ -266,33 +304,43 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             statusLog.append(getCurrentTimestamp()).append(" CMD: Stop Discovery for ").append(activeDiscoveryServiceType).append("\n");
         }
         activeDiscoveryServiceType = null;
-        resolvedEspServiceInfo = null;
-        // Do not stop WebSocketService here if it's connected, only discovery.
-        // WebSocketService stop/disconnect is handled by its own logic or buttonAction.
-        // If it was in MAIN_APP_WS mode and WS was connected, it remains connected.
-        // If it was OTA, UI simply resets.
-        updateUIForInitialState(); // Or a more nuanced "discovery stopped" UI update
+        // resolvedEspServiceInfo = null; // Keep resolved info if user just stops discovery after finding something
+        updateUIBasedOnCurrentState(); // More generic update
     }
 
-
-    // --- UI Update Methods ---
+    // --- UI Update Methods --- // ### MODIFIED these methods for manualIpEntryMode
     private void updateUIForInitialState() {
         textViewStatus.setText("Status: Idle. Select mode and start discovery.");
-        editTextEspIpDisplay.setText("");
         buttonStartStopDiscovery.setText("Start Discovery");
         buttonStartStopDiscovery.setEnabled(true);
         radioGroupMonitorMode.setEnabled(true);
 
         if (currentMonitorMode == MonitorMode.OTA) {
+            editTextEspIpDisplay.setText("");
+            editTextEspIpDisplay.setHint("Service Info (Auto-Discovering...)");
+            editTextEspIpDisplay.setEnabled(false);
+            editTextEspIpDisplay.setFocusable(false);
+            manualIpEntryMode = false;
             buttonAction.setText("Open OTA Page");
-            buttonAction.setEnabled(false); // Enable when service resolved
+            buttonAction.setEnabled(resolvedEspServiceInfo != null);
             textViewLastMessage.setVisibility(View.GONE);
         } else if (currentMonitorMode == MonitorMode.MAIN_APP_WS) {
-            buttonAction.setText("Connect WS");
-            buttonAction.setEnabled(false); // Enable when service resolved
+             if (isWebSocketServiceActive) { // If already connected (e.g. app restart)
+                updateUIForWsConnected();
+            } else if (resolvedEspServiceInfo != null) {
+                updateUIForWsServiceResolvedNotConnected();
+            } else { // No connection, no resolved service: allow manual input
+                editTextEspIpDisplay.setText("");
+                editTextEspIpDisplay.setHint("Enter ESP mDNS/IP or Discover");
+                editTextEspIpDisplay.setEnabled(true);
+                editTextEspIpDisplay.setFocusableInTouchMode(true);
+                manualIpEntryMode = true;
+                buttonAction.setText("Connect WS");
+                buttonAction.setEnabled(true); // Enable for manual input
+                textViewStatus.setText("Status: Idle. Enter address or start discovery.");
+            }
             textViewLastMessage.setVisibility(View.VISIBLE);
-            textViewLastMessage.setText("Last WS Msg: None");
-             if(isWebSocketServiceActive) updateUIForWsConnected(); // Persist connected state if service is active
+            if (!isWebSocketServiceActive) textViewLastMessage.setText("Last WS Msg: None");
         }
     }
 
@@ -300,10 +348,14 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         textViewStatus.setText("Status: Discovering " +
                 (currentMonitorMode == MonitorMode.OTA ? "OTA Server (" + OTA_SERVICE_NAME_FILTER + ")" : "Main App WS (" + MAIN_APP_WS_SERVICE_NAME_FILTER + ")") + "...");
         editTextEspIpDisplay.setText("");
+        editTextEspIpDisplay.setHint("Discovering...");
+        editTextEspIpDisplay.setEnabled(false);
+        editTextEspIpDisplay.setFocusable(false);
+        manualIpEntryMode = false;
         buttonStartStopDiscovery.setText("Stop Discovery");
         buttonStartStopDiscovery.setEnabled(true);
-        buttonAction.setEnabled(false); // Disabled until a service is resolved
-        radioGroupMonitorMode.setEnabled(false); // Disable mode change during discovery
+        buttonAction.setEnabled(false);
+        radioGroupMonitorMode.setEnabled(false);
     }
 
     private void updateUIForOtaServiceResolved() {
@@ -312,9 +364,13 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         String host = resolvedEspServiceInfo.getHost() != null ? resolvedEspServiceInfo.getHost().getHostAddress() : "N/A";
         int port = resolvedEspServiceInfo.getPort();
         String displayText = String.format(Locale.US, "Found OTA: %s\nHost: %s:%d", serviceName, host, port);
+        
         editTextEspIpDisplay.setText(displayText);
+        editTextEspIpDisplay.setEnabled(false);
+        editTextEspIpDisplay.setFocusable(false);
+        manualIpEntryMode = false;
         textViewStatus.setText("Status: OTA Server Found!");
-        buttonStartStopDiscovery.setText("Start Discovery"); // Ready for new discovery
+        buttonStartStopDiscovery.setText("Start Discovery"); 
         buttonStartStopDiscovery.setEnabled(true);
         buttonAction.setText("Open OTA Page");
         buttonAction.setEnabled(true);
@@ -327,9 +383,13 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         String host = resolvedEspServiceInfo.getHost() != null ? resolvedEspServiceInfo.getHost().getHostAddress() : "N/A";
         int port = resolvedEspServiceInfo.getPort();
         String displayText = String.format(Locale.US, "Found WS: %s\nHost: %s:%d", serviceName, host, port);
+        
         editTextEspIpDisplay.setText(displayText);
+        editTextEspIpDisplay.setEnabled(false);
+        editTextEspIpDisplay.setFocusable(false);
+        manualIpEntryMode = false;
         textViewStatus.setText("Status: Main App WS Found. Ready to connect.");
-        buttonStartStopDiscovery.setText("Start Discovery"); // Ready for new discovery
+        buttonStartStopDiscovery.setText("Start Discovery");
         buttonStartStopDiscovery.setEnabled(true);
         buttonAction.setText("Connect WS");
         buttonAction.setEnabled(true);
@@ -338,45 +398,77 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
 
     private void updateUIForWsConnecting() {
         textViewStatus.setText("Status (WS): Connecting...");
-        // buttonAction might be temporarily disabled or show "Connecting..."
-        buttonAction.setEnabled(false); // Disable action while connecting
-        radioGroupMonitorMode.setEnabled(false); // Keep disabled
-        buttonStartStopDiscovery.setEnabled(false); // Keep disabled
+        editTextEspIpDisplay.setEnabled(false); // Disable input during connection attempt
+        editTextEspIpDisplay.setFocusable(false);
+        manualIpEntryMode = false;
+        buttonAction.setText("Connecting...");
+        buttonAction.setEnabled(false);
+        radioGroupMonitorMode.setEnabled(false);
+        buttonStartStopDiscovery.setEnabled(false);
     }
 
     private void updateUIForWsConnected() {
-        if (resolvedEspServiceInfo == null && currentMonitorMode == MonitorMode.MAIN_APP_WS) {
-             // If connected but resolvedEspServiceInfo is null (e.g. app restart while service was connected)
-             // We don't have the display text, but WebSocketService is connected.
-             textViewStatus.setText("Status (WS): Connected");
-             editTextEspIpDisplay.setText("Connected (Service was running)");
-        } else if (resolvedEspServiceInfo != null) {
-            String serviceName = resolvedEspServiceInfo.getServiceName();
-            String host = resolvedEspServiceInfo.getHost() != null ? resolvedEspServiceInfo.getHost().getHostAddress() : "N/A";
-            int port = resolvedEspServiceInfo.getPort();
-            String displayText = String.format(Locale.US, "WS: %s\nHost: %s:%d", serviceName, host, port);
-            editTextEspIpDisplay.setText(displayText);
-            textViewStatus.setText("Status (WS): Connected to " + serviceName);
+         String displayText = "Connected to ESP32";
+        if (resolvedEspServiceInfo != null && resolvedEspServiceInfo.getHost() != null) { // Prefer mDNS info if available
+            displayText = String.format(Locale.US, "WS: %s\nHost: %s:%d (Connected)", 
+                resolvedEspServiceInfo.getServiceName(), 
+                resolvedEspServiceInfo.getHost().getHostAddress(), 
+                resolvedEspServiceInfo.getPort());
+        } else if (!TextUtils.isEmpty(editTextEspIpDisplay.getText()) && !editTextEspIpDisplay.getHint().toString().toLowerCase().contains("discover")) {
+            // If connected via manual input, show that input, otherwise generic.
+             displayText = editTextEspIpDisplay.getText().toString() + " (Connected)";
         }
 
+        editTextEspIpDisplay.setText(displayText);
+        editTextEspIpDisplay.setEnabled(false);
+        editTextEspIpDisplay.setFocusable(false);
+        manualIpEntryMode = false;
+        textViewStatus.setText("Status (WS): Connected to ESP32");
         buttonAction.setText("Disconnect WS");
         buttonAction.setEnabled(true);
-        buttonStartStopDiscovery.setText("Start Discovery"); // Can still look for other services
+        buttonStartStopDiscovery.setText("Start Discovery");
         buttonStartStopDiscovery.setEnabled(true);
-        radioGroupMonitorMode.setEnabled(true); // Can change mode now
+        radioGroupMonitorMode.setEnabled(true);
     }
 
     private void updateUIForWsDisconnected() {
-        textViewStatus.setText("Status (WS): Disconnected. Discover or Connect.");
-        // editTextEspIpDisplay can retain old info or be cleared
-        // If resolvedEspServiceInfo still exists, we can attempt to reconnect
+        textViewStatus.setText("Status (WS): Disconnected.");
+        buttonAction.setText("Connect WS");
+        
         if (resolvedEspServiceInfo != null && currentMonitorMode == MonitorMode.MAIN_APP_WS) {
             updateUIForWsServiceResolvedNotConnected(); // Revert to "found, ready to connect" state
-        } else {
-            updateUIForInitialState(); // Or a more specific "WS was disconnected" state
+        } else if (currentMonitorMode == MonitorMode.MAIN_APP_WS) { // No resolved service, enable manual
+            editTextEspIpDisplay.setText("");
+            editTextEspIpDisplay.setHint("Enter ESP mDNS/IP or Discover");
+            editTextEspIpDisplay.setEnabled(true);
+            editTextEspIpDisplay.setFocusableInTouchMode(true);
+            manualIpEntryMode = true;
+            buttonAction.setEnabled(true); // Enable connect button for manual input
+        } else { // OTA mode or other
+            updateUIForInitialState();
         }
-        buttonAction.setText("Connect WS");
-        buttonAction.setEnabled(resolvedEspServiceInfo != null);
+        // Ensure discovery button and radio group are enabled if not discovering
+        if (!nsdHelper.isDiscoveryActive()) {
+             buttonStartStopDiscovery.setText("Start Discovery");
+             buttonStartStopDiscovery.setEnabled(true);
+             radioGroupMonitorMode.setEnabled(true);
+        }
+    }
+
+    private void updateUIBasedOnCurrentState() { // ### NEW ### Helper to consolidate UI updates
+        if (nsdHelper.isDiscoveryActive()) {
+            updateUIForDiscovering();
+        } else if (isWebSocketServiceActive && currentMonitorMode == MonitorMode.MAIN_APP_WS) {
+            updateUIForWsConnected();
+        } else if (resolvedEspServiceInfo != null) {
+            if (currentMonitorMode == MonitorMode.OTA) {
+                updateUIForOtaServiceResolved();
+            } else if (currentMonitorMode == MonitorMode.MAIN_APP_WS) {
+                updateUIForWsServiceResolvedNotConnected();
+            }
+        } else {
+            updateUIForInitialState();
+        }
     }
 
 
@@ -385,13 +477,12 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     public void onNsdServiceFound(NsdServiceInfo serviceInfo) {
         runOnUiThread(() -> {
             Log.i(TAG, "NSD Candidate Found: " + serviceInfo.getServiceName() + " Type: " + serviceInfo.getServiceType());
-            // Update status to show a candidate is being processed, only if discovery is active for this type.
-            // This check ensures that if a user quickly switches modes, a "found" message for an old discovery type isn't shown.
-            if (nsdHelper.isDiscoveryActive() && serviceInfo.getServiceType().startsWith(activeDiscoveryServiceType.substring(0, activeDiscoveryServiceType.indexOf("."))) ) {
-                if (currentMonitorMode == MonitorMode.OTA && OTA_SERVICE_NAME_FILTER.equalsIgnoreCase(serviceInfo.getServiceName())) {
-                    textViewStatus.setText("Status: OTA Candidate " + serviceInfo.getServiceName() + " found. Resolving...");
-                } else if (currentMonitorMode == MonitorMode.MAIN_APP_WS && MAIN_APP_WS_SERVICE_NAME_FILTER.equalsIgnoreCase(serviceInfo.getServiceName())) {
-                    textViewStatus.setText("Status: Main App Candidate " + serviceInfo.getServiceName() + " found. Resolving...");
+            if (nsdHelper.isDiscoveryActive() && activeDiscoveryServiceType != null &&
+                serviceInfo.getServiceType().toLowerCase().startsWith(activeDiscoveryServiceType.toLowerCase().replace(".local.", ""))) {
+                
+                String filterName = (currentMonitorMode == MonitorMode.OTA) ? OTA_SERVICE_NAME_FILTER : MAIN_APP_WS_SERVICE_NAME_FILTER;
+                if (filterName.equalsIgnoreCase(serviceInfo.getServiceName())) {
+                     textViewStatus.setText("Status: Candidate " + serviceInfo.getServiceName() + " found. Resolving...");
                 }
             }
         });
@@ -404,24 +495,26 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
                     " on host " + serviceInfo.getHost() + ":" + serviceInfo.getPort() +
                     " (Original discovery type: " + serviceTypeDiscovered + ")");
 
-            // Critical: Ensure this resolved service matches the *currently active* discovery type and mode
-            if (!nsdHelper.isDiscoveryActive() && !serviceTypeDiscovered.equals(activeDiscoveryServiceType)) {
+            // Check if this resolution is still relevant for the current mode and discovery type
+            if (activeDiscoveryServiceType == null || !serviceTypeDiscovered.toLowerCase().startsWith(activeDiscoveryServiceType.toLowerCase().replace(".local.",""))) {
                  Log.w(TAG, "Resolved service " + serviceInfo.getServiceName() + " for a discovery ("+serviceTypeDiscovered+") that is no longer active or matches current mode. Ignoring.");
                  return;
             }
 
-            resolvedEspServiceInfo = serviceInfo;
+            resolvedEspServiceInfo = serviceInfo; // Store resolved info
             statusLog.append(getCurrentTimestamp()).append(" NSD: Resolved ").append(serviceInfo.getServiceName()).append(" at ").append(serviceInfo.getHost().getHostAddress()).append(":").append(serviceInfo.getPort()).append("\n");
 
-            if (currentMonitorMode == MonitorMode.OTA && OTA_SERVICE_TYPE.equals(serviceTypeDiscovered) && OTA_SERVICE_NAME_FILTER.equalsIgnoreCase(serviceInfo.getServiceName())) {
-                updateUIForOtaServiceResolved();
-                nsdHelper.stopDiscovery(); // Found our target
-            } else if (currentMonitorMode == MonitorMode.MAIN_APP_WS && MAIN_APP_WS_SERVICE_TYPE.equals(serviceTypeDiscovered) && MAIN_APP_WS_SERVICE_NAME_FILTER.equalsIgnoreCase(serviceInfo.getServiceName())) {
-                updateUIForWsServiceResolvedNotConnected();
-                nsdHelper.stopDiscovery(); // Found our target
+            String filterName = (currentMonitorMode == MonitorMode.OTA) ? OTA_SERVICE_NAME_FILTER : MAIN_APP_WS_SERVICE_NAME_FILTER;
+            
+            if (filterName.equalsIgnoreCase(serviceInfo.getServiceName())) {
+                if (currentMonitorMode == MonitorMode.OTA) {
+                    updateUIForOtaServiceResolved();
+                } else if (currentMonitorMode == MonitorMode.MAIN_APP_WS) {
+                    updateUIForWsServiceResolvedNotConnected();
+                }
+                nsdHelper.stopDiscovery(); // Found our specific target, stop discovery.
             } else {
-                Log.w(TAG, "Resolved service '" + serviceInfo.getServiceName() + "' of type '" + serviceTypeDiscovered + "' but current mode/filter does not match. Mode: " + currentMonitorMode);
-                // If it doesn't match, don't stop discovery, let it continue for the right service.
+                 Log.w(TAG, "Resolved service '" + serviceInfo.getServiceName() + "' but name does not match filter '" + filterName + "'. Continuing discovery if active.");
             }
         });
     }
@@ -437,18 +530,13 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
                 Toast.makeText(this, serviceInfo.getServiceName() + " lost.", Toast.LENGTH_SHORT).show();
 
                 if (currentMonitorMode == MonitorMode.MAIN_APP_WS && isWebSocketServiceActive) {
-                    // If it was the WebSocket service that got lost, tell WebSocketService to disconnect/handle it
                     Intent serviceIntent = new Intent(this, WebSocketService.class);
-                    serviceIntent.setAction(WebSocketService.ACTION_DISCONNECT); // Or a specific "handle_lost_server" action
+                    serviceIntent.setAction(WebSocketService.ACTION_DISCONNECT); 
                     startService(serviceIntent);
-                    updateUIForWsDisconnected();
+                    // updateUIForWsDisconnected(); // Broadcast receiver will handle this
                 } else {
-                    updateUIForInitialState(); // Reset to allow new discovery
+                   updateUIBasedOnCurrentState();
                 }
-                // Optionally restart discovery for the current mode if desired
-                // if (!nsdHelper.isDiscoveryActive()) {
-                //     startDiscoveryForCurrentMode();
-                // }
             }
         });
     }
@@ -459,9 +547,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             Log.e(TAG, "NSD Discovery Failed for " + serviceType + ". Error: " + errorCode);
             statusLog.append(getCurrentTimestamp()).append(" NSD: Discovery Failed (").append(serviceType).append("). Error: ").append(errorCode).append("\n");
             textViewStatus.setText("Status: Discovery Failed (" + serviceTypeToShortName(serviceType) + "). Check Network/Permissions.");
-            updateUIForInitialState(); // Reset UI
-            buttonStartStopDiscovery.setText("Start Discovery"); // Ensure it says start
-            radioGroupMonitorMode.setEnabled(true);
+            updateUIBasedOnCurrentState();
         });
     }
 
@@ -471,8 +557,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             Log.e(TAG, "NSD Resolve Failed for " + serviceInfo.getServiceName() + ". Error: " + errorCode);
             statusLog.append(getCurrentTimestamp()).append(" NSD: Resolve Failed for ").append(serviceInfo.getServiceName()).append(". Error: ").append(errorCode).append("\n");
             textViewStatus.setText("Status: Failed to resolve " + serviceInfo.getServiceName() + ". Still searching if discovery active...");
-            // Don't necessarily change UI too much, discovery might still be running for other candidates.
-            // If discovery stops due to this, onNsdDiscoveryStopped will handle UI reset.
+            // No major UI change, let discovery continue or stop naturally.
         });
     }
 
@@ -480,7 +565,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     public void onNsdDiscoveryStarted(String serviceType) {
         runOnUiThread(() -> {
             Log.i(TAG, "NSD Discovery actually started for " + serviceType);
-            activeDiscoveryServiceType = serviceType; // Confirm active discovery type
+            activeDiscoveryServiceType = serviceType; 
             updateUIForDiscovering();
         });
     }
@@ -489,19 +574,8 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     public void onNsdDiscoveryStopped(String serviceType) {
         runOnUiThread(() -> {
             Log.i(TAG, "NSD Discovery actually stopped for " + serviceType);
-            activeDiscoveryServiceType = null; // Clear active discovery type
-            // If discovery stopped and we haven't resolved a service for the current mode, reset UI.
-            // If a service IS resolved, the UI should already reflect that.
-            if (resolvedEspServiceInfo == null) {
-                updateUIForInitialState();
-            } else {
-                // If a service IS resolved, ensure UI matches (e.g. if stopped manually after resolve)
-                if (currentMonitorMode == MonitorMode.OTA) updateUIForOtaServiceResolved();
-                else if (currentMonitorMode == MonitorMode.MAIN_APP_WS && !isWebSocketServiceActive) updateUIForWsServiceResolvedNotConnected();
-                else if (currentMonitorMode == MonitorMode.MAIN_APP_WS && isWebSocketServiceActive) updateUIForWsConnected();
-            }
-            buttonStartStopDiscovery.setText("Start Discovery");
-            radioGroupMonitorMode.setEnabled(true);
+            activeDiscoveryServiceType = null; 
+            updateUIBasedOnCurrentState(); // Update UI based on whether a service was found or not
         });
     }
 
@@ -511,8 +585,8 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     }
 
     private String serviceTypeToShortName(String serviceType) {
-        if (OTA_SERVICE_TYPE.equals(serviceType)) return "OTA";
-        if (MAIN_APP_WS_SERVICE_TYPE.equals(serviceType)) return "MainAppWS";
+        if (OTA_SERVICE_TYPE.equalsIgnoreCase(serviceType) || serviceType.contains("http")) return "OTA"; // More robust check
+        if (MAIN_APP_WS_SERVICE_TYPE.equalsIgnoreCase(serviceType) || serviceType.contains("myespwebsocket")) return "MainAppWS";
         return "Unknown";
     }
 
@@ -553,25 +627,13 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             LocalBroadcastManager.getInstance(this).registerReceiver(serviceUpdateReceiver, filter);
             isServiceReceiverRegistered = true;
         }
-        // If discovery was active and app was paused, it might have been stopped by OS or NsdHelper.
-        // Re-evaluate UI based on current state.
-        if (nsdHelper.isDiscoveryActive()){
-            updateUIForDiscovering();
-        } else if (resolvedEspServiceInfo != null) {
-             if(currentMonitorMode == MonitorMode.OTA) updateUIForOtaServiceResolved();
-             else if (currentMonitorMode == MonitorMode.MAIN_APP_WS && isWebSocketServiceActive) updateUIForWsConnected();
-             else if (currentMonitorMode == MonitorMode.MAIN_APP_WS && !isWebSocketServiceActive) updateUIForWsServiceResolvedNotConnected();
-        } else {
-            updateUIForInitialState();
-        }
+         updateUIBasedOnCurrentState();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        // Optional: Stop discovery when app is paused to save battery,
-        // but user might want it running in background if connected to WS.
-        // For simplicity, we are not stopping discovery here, but you might want to.
+        // Optional: Stop discovery if you want to save battery when app is paused.
         // if (nsdHelper.isDiscoveryActive()) {
         //     nsdHelper.stopDiscovery();
         // }
@@ -583,16 +645,14 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             LocalBroadcastManager.getInstance(this).unregisterReceiver(serviceUpdateReceiver);
             isServiceReceiverRegistered = false;
         }
-        nsdHelper.tearDown(); // Important!
+        nsdHelper.tearDown(); 
 
-        // Decide if WebSocketService should be stopped
-        // If you want it to stop when MainActivity is destroyed:
         if (currentMonitorMode == MonitorMode.MAIN_APP_WS && isWebSocketServiceActive) {
-             if (!isChangingConfigurations()) { // Don't stop on rotation
+             if (!isChangingConfigurations()) { 
                 Log.d(TAG, "onDestroy: Stopping WebSocketService.");
                 Intent stopIntent = new Intent(this, WebSocketService.class);
                 stopIntent.setAction(WebSocketService.ACTION_STOP_FOREGROUND_SERVICE);
-                startService(stopIntent);
+                startService(stopIntent); // Ask service to stop itself
                 isWebSocketServiceActive = false;
              }
         }

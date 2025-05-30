@@ -11,16 +11,15 @@
         android:id="@+id/editTextEspIp"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:hint="Service Info (Auto-Discovering...)"
-        android:inputType="textMultiLine|textNoSuggestions"
-        android:minLines="2"
-        android:maxLines="3"
+        android:hint="Service Info / Manual Input" 
+        android:inputType="textUri|textNoSuggestions" 
+        android:minLines="1" 
+        android:maxLines="2" 
         android:gravity="top|start"
-        android:enabled="false"
-        android:focusable="false"
-        android:background="@android:color/transparent"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
+        android:enabled="false" 
+        android:focusable="false" 
+        android:background="@android:drawable/edit_text" 
+        android:padding="8dp"
         android:textSize="14sp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -52,8 +51,6 @@
             android:text="Monitor Main App (WS)" />
     </RadioGroup>
 
-    <!-- Using a single button for Start/Stop Discovery -->
-    <!-- Its ID is buttonStartService, which MainActivity.java (buttonStartStopDiscovery variable) uses -->
     <Button
         android:id="@+id/buttonStartService"
         style="?android:attr/buttonBarButtonStyle"
@@ -65,8 +62,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Using a single button for Action (Open Page / Connect WS / Disconnect WS) -->
-    <!-- Its ID is buttonConnect, which MainActivity.java (buttonAction variable) uses -->
     <Button
         android:id="@+id/buttonConnect"
         style="?android:attr/buttonBarButtonStyle"
