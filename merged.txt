@@ -143,8 +143,8 @@ android {
 
     compileOptions {
         // Align with the JDK version used in the CI workflow (JDK 17)
-        sourceCompatibility JavaVersion.VERSION_1_17
-        targetCompatibility JavaVersion.VERSION_1_17
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 }
 
@@ -154,8 +154,8 @@ androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
         variant.outputs.forEach { output ->
             // Ensure we are modifying the main APK output
-            // com.android.build.api.variant.VariantOutput.OutputType.SINGLE is the enum for the main APK.
-            if (output.outputType.get() == com.android.build.api.variant.VariantOutput.OutputType.SINGLE.INSTANCE.type) {
+            // Correctly compare the outputType enum directly
+            if (output.outputType == com.android.build.api.variant.VariantOutputConfiguration.OutputType.SINGLE) {
                 output.outputFileName.set("MrCoopersESP32.apk")
             }
         }
@@ -177,6 +177,7 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }
+
 
 #################### START OF FILE: app\src\main\AndroidManifest.xml ####################
 
