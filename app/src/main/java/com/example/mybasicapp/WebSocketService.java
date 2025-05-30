@@ -35,13 +35,12 @@ import okio.ByteString;
 
 public class WebSocketService extends Service {
 
-    private static final String TAG = "WebSocketService";
-    // Ensure action strings are unique if copied from elsewhere or define them in a central place
+    private static final String TAG = "WebSocketService_DEBUG"; // Enhanced Tag
     public static final String ACTION_START_FOREGROUND_SERVICE = "com.example.mybasicapp.ACTION_START_FOREGROUND_SERVICE";
     public static final String ACTION_STOP_FOREGROUND_SERVICE = "com.example.mybasicapp.ACTION_STOP_FOREGROUND_SERVICE";
     public static final String ACTION_CONNECT = "com.example.mybasicapp.ACTION_CONNECT";
     public static final String ACTION_DISCONNECT = "com.example.mybasicapp.ACTION_DISCONNECT";
-    public static final String EXTRA_IP_ADDRESS = "EXTRA_IP_ADDRESS"; // This is the full ws:// URL
+    public static final String EXTRA_IP_ADDRESS = "EXTRA_IP_ADDRESS";
 
     public static final String ACTION_STATUS_UPDATE = "com.example.mybasicapp.ACTION_STATUS_UPDATE";
     public static final String EXTRA_STATUS = "EXTRA_STATUS";
@@ -51,80 +50,86 @@ public class WebSocketService extends Service {
 
     private static final String NOTIFICATION_CHANNEL_ID_SERVICE = "web_socket_service_status_channel";
     private static final String NOTIFICATION_CHANNEL_ID_MESSAGES = "esp32_message_notifications";
-    private static final int SERVICE_NOTIFICATION_ID = 1; // Must be > 0
+    private static final int SERVICE_NOTIFICATION_ID = 1;
     private static final int MESSAGE_NOTIFICATION_ID = 101;
 
     private OkHttpClient httpClient;
     private WebSocket webSocketClient;
-    private String currentWebSocketUrl; // Stores the URL we are currently connected to or trying to connect to
+    private String currentWebSocketUrl;
     private Handler retryHandler = new Handler(Looper.getMainLooper());
     private boolean isServiceRunningAsForeground = false;
     private int connectionRetryCount = 0;
-    private static final int MAX_CONNECTION_RETRIES = 5; // Max attempts before giving up (for a single connect sequence)
-    private static final long INITIAL_RETRY_DELAY_MS = 3000; // 3 seconds
-    private static final long MAX_RETRY_DELAY_MS = 30000; // 30 seconds max between retries
+    private static final int MAX_CONNECTION_RETRIES = 5;
+    private static final long INITIAL_RETRY_DELAY_MS = 3000;
+    private static final long MAX_RETRY_DELAY_MS = 30000;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        Log.i(TAG, "Service onCreate");
+        Log.i(TAG, "onCreate: Service Creating");
         httpClient = new OkHttpClient.Builder()
                 .pingInterval(20, TimeUnit.SECONDS)
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)
-                .retryOnConnectionFailure(false) // We handle retries manually
+                .retryOnConnectionFailure(false)
                 .build();
         createNotificationChannel(NOTIFICATION_CHANNEL_ID_SERVICE, "ESP32 Sync Service", NotificationManager.IMPORTANCE_LOW);
         createNotificationChannel(NOTIFICATION_CHANNEL_ID_MESSAGES, getString(R.string.channel_name), NotificationManager.IMPORTANCE_HIGH);
+        Log.d(TAG, "onCreate: Service Created");
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null || intent.getAction() == null) {
-            Log.w(TAG, "onStartCommand: Null intent or action. Service might be restarting.");
+            Log.w(TAG, "onStartCommand: Null intent or action. Flags=" + flags + ", StartId=" + startId);
             if (!isServiceRunningAsForeground) {
-                 startForegroundServiceWithNotification("Service Initializing..."); // Ensure foreground state on restart
+                 Log.d(TAG, "onStartCommand: Ensuring foreground state due to null intent.");
+                 startForegroundServiceWithNotification("Service Initializing (Restart)...");
             }
-            return START_STICKY; // Try to restart if killed
+            return START_STICKY;
         }
 
         String action = intent.getAction();
-        Log.i(TAG, "onStartCommand received Action: " + action);
+        Log.i(TAG, "onStartCommand: Action='" + action + "', Flags=" + flags + ", StartId=" + startId);
 
         switch (action) {
             case ACTION_START_FOREGROUND_SERVICE:
+                Log.d(TAG, "onStartCommand: Handling ACTION_START_FOREGROUND_SERVICE. isServiceRunningAsForeground=" + isServiceRunningAsForeground);
                 if (!isServiceRunningAsForeground) {
-                    startForegroundServiceWithNotification("Service Active. Waiting for connection command.");
+                    startForegroundServiceWithNotification("Service Active. Ready for connection.");
                 }
                 break;
             case ACTION_STOP_FOREGROUND_SERVICE:
+                Log.d(TAG, "onStartCommand: Handling ACTION_STOP_FOREGROUND_SERVICE.");
                 stopServiceAndForeground();
-                return START_NOT_STICKY; // Do not restart if explicitly stopped
+                return START_NOT_STICKY;
             case ACTION_CONNECT:
-                if (!isServiceRunningAsForeground) {
-                    startForegroundServiceWithNotification("Preparing to connect...");
-                }
                 String wsUrlFromIntent = intent.getStringExtra(EXTRA_IP_ADDRESS);
+                Log.d(TAG, "onStartCommand: Handling ACTION_CONNECT. URL='" + wsUrlFromIntent + "'. isServiceRunningAsForeground=" + isServiceRunningAsForeground);
+                if (!isServiceRunningAsForeground) {
+                    startForegroundServiceWithNotification("Preparing to connect to " + (wsUrlFromIntent != null ? wsUrlFromIntent.replaceFirst("ws://","").split("/")[0] : "ESP") );
+                }
                 if (wsUrlFromIntent != null && !wsUrlFromIntent.isEmpty()) {
-                    // If already connected to a different URL, disconnect first
                     if (webSocketClient != null && currentWebSocketUrl != null && !currentWebSocketUrl.equals(wsUrlFromIntent)) {
-                        Log.d(TAG, "Connecting to new URL. Closing existing connection to " + currentWebSocketUrl);
-                        disconnectWebSocket("Connecting to new target: " + wsUrlFromIntent);
+                        Log.i(TAG, "ACTION_CONNECT: New URL received. Closing existing connection to '" + currentWebSocketUrl + "'.");
+                        disconnectWebSocket("Switching to new target: " + wsUrlFromIntent.replaceFirst("ws://","").split("/")[0]);
                     }
+                    Log.i(TAG, "ACTION_CONNECT: Setting currentWebSocketUrl to '" + wsUrlFromIntent + "'");
                     currentWebSocketUrl = wsUrlFromIntent;
-                    connectionRetryCount = 0; // Reset retries for a new explicit connect command
+                    connectionRetryCount = 0;
                     cancelPendingRetries();
                     connectWebSocket(currentWebSocketUrl);
                 } else {
-                    Log.e(TAG, "ACTION_CONNECT: WebSocket URL is null or empty.");
-                    sendBroadcastStatus("Error: WebSocket URL missing for connect command");
+                    Log.e(TAG, "ACTION_CONNECT: WebSocket URL is null or empty in intent.");
+                    sendBroadcastStatus("Error: WebSocket URL missing for connect");
                     updateServiceNotification("Error: URL Missing");
                 }
                 break;
             case ACTION_DISCONNECT:
-                disconnectWebSocket("User requested disconnect");
-                updateServiceNotification("Disconnected by user."); // Update notification after explicit disconnect
+                Log.d(TAG, "onStartCommand: Handling ACTION_DISCONNECT.");
+                disconnectWebSocket("User or App requested disconnect"); // More specific reason
+                updateServiceNotification("Disconnected by request.");
                 break;
             default:
                 Log.w(TAG, "onStartCommand: Unhandled action: " + action);
@@ -134,6 +139,7 @@ public class WebSocketService extends Service {
     }
 
     private void startForegroundServiceWithNotification(String statusText) {
+        Log.d(TAG, "startForegroundServiceWithNotification: statusText='" + statusText + "'");
         Intent notificationIntent = new Intent(this, MainActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
                 notificationIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
@@ -154,30 +160,28 @@ public class WebSocketService extends Service {
                 startForeground(SERVICE_NOTIFICATION_ID, notification);
             }
             isServiceRunningAsForeground = true;
-            Log.i(TAG, "Service started in foreground. Status: " + statusText);
-        } catch (Exception e) { // Catch SecurityException, IllegalStateException, etc.
-            Log.e(TAG, "Error starting foreground service: " + e.getClass().getSimpleName() + " - " + e.getMessage(), e);
+            Log.i(TAG, "startForegroundServiceWithNotification: Service started in foreground. Notification: '" + statusText + "'");
+        } catch (Exception e) {
+            Log.e(TAG, "startForegroundServiceWithNotification: Error: " + e.getClass().getSimpleName() + " - " + e.getMessage(), e);
             isServiceRunningAsForeground = false;
-            // Consider calling stopSelf() if foregrounding is mandatory and fails.
         }
     }
 
     private void updateServiceNotification(String text) {
+        Log.d(TAG, "updateServiceNotification: text='" + text + "'. isServiceRunningAsForeground=" + isServiceRunningAsForeground);
         if (!isServiceRunningAsForeground) {
-            Log.d(TAG, "Service not in foreground, persistent notification not updated. Current text would be: " + text);
             return;
         }
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (manager == null) {
-            Log.e(TAG, "NotificationManager is null, cannot update notification.");
+             Log.e(TAG, "updateServiceNotification: NotificationManager is null.");
             return;
         }
-
         Intent notificationIntent = new Intent(this, MainActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
                 notificationIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
         Notification notification = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID_SERVICE)
+                // ... (rest of the notification builder from previous correct version)
                 .setContentTitle(getString(R.string.app_name) + " Sync")
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_stat_service)
@@ -189,58 +193,56 @@ public class WebSocketService extends Service {
         try {
             manager.notify(SERVICE_NOTIFICATION_ID, notification);
         } catch (Exception e) {
-            Log.e(TAG, "Error updating service notification: " + e.getMessage(), e);
+            Log.e(TAG, "updateServiceNotification: Error: " + e.getMessage(), e);
         }
     }
 
     private void connectWebSocket(final String wsUrlToConnect) {
+        Log.i(TAG, "connectWebSocket: Attempting connection to '" + wsUrlToConnect + "'. RetryCount=" + connectionRetryCount);
         if (wsUrlToConnect == null || wsUrlToConnect.isEmpty()) {
             Log.e(TAG, "connectWebSocket: Aborted, URL is null or empty.");
-            sendBroadcastStatus("Error: Invalid ESP32 URL for connection");
+            sendBroadcastStatus("Error: Invalid ESP32 URL");
             updateServiceNotification("Error: Invalid URL");
             return;
         }
 
-        if (webSocketClient != null) { // Should have been handled by disconnectWebSocket if URL changed
-            Log.d(TAG, "connectWebSocket: Closing pre-existing client before connecting to " + wsUrlToConnect);
-            webSocketClient.close(1001, "Client re-initiating connection");
+        if (webSocketClient != null) {
+            Log.w(TAG, "connectWebSocket: webSocketClient is not null. This indicates a potential race condition or improper cleanup. Closing it first.");
+            webSocketClient.close(1001, "Cleaning up before new attempt");
             webSocketClient = null;
         }
 
         Request request = new Request.Builder().url(wsUrlToConnect).build();
-        final String displayUrl = wsUrlToConnect.replaceFirst("ws://", "").replaceFirst("/ws", ""); // For display only
-        String connectingMsg = "Connecting to: " + displayUrl +
-                (connectionRetryCount > 0 ? " (Retrying " + connectionRetryCount + "/" + MAX_CONNECTION_RETRIES + ")" : "");
-        Log.i(TAG, "Attempting WebSocket connection to: " + wsUrlToConnect + (connectionRetryCount > 0 ? " (Retry " + connectionRetryCount + ")" : ""));
+        final String displayUrl = wsUrlToConnect.replaceFirst("ws://", "").replaceFirst("/ws", "");
+        String connectingMsg = "Connecting to: " + displayUrl + (connectionRetryCount > 0 ? " (Retry " + connectionRetryCount + ")" : "");
+        Log.d(TAG, "connectWebSocket: Sending broadcast and updating notification: '" + connectingMsg + "'");
         sendBroadcastStatus(connectingMsg);
         updateServiceNotification(connectingMsg);
 
-        // Create a new WebSocket client for this attempt
-        webSocketClient = httpClient.newWebSocket(request, new WebSocketListener() {
+        webSocketClient = httpClient.newWebSocket(request, new WebSocketListener() { // Assign to instance variable
             @Override
             public void onOpen(WebSocket ws, Response response) {
                 super.onOpen(ws, response);
-                 // Check if this callback is for the current connection attempt
                 if (!wsUrlToConnect.equals(currentWebSocketUrl)) {
-                    Log.w(TAG, "onOpen received for a stale URL: " + wsUrlToConnect + ". Current target: " + currentWebSocketUrl + ". Closing this connection.");
-                    ws.close(1000, "Stale connection attempt.");
+                    Log.w(TAG, "onOpen: Received for a STALE URL '" + wsUrlToConnect + "'. Current target: '" + currentWebSocketUrl + "'. Closing this WS.");
+                    ws.close(1000, "Stale connection open.");
                     return;
                 }
-                Log.i(TAG, "WebSocket Opened with " + displayUrl);
+                Log.i(TAG, "onOpen: WebSocket OPENED successfully with '" + displayUrl + "'. Response: " + response.message());
                 sendBroadcastStatus("Connected to: " + displayUrl);
                 updateServiceNotification("Connected to: " + displayUrl);
-                connectionRetryCount = 0; // Reset on successful connection
+                connectionRetryCount = 0;
                 cancelPendingRetries();
-                // WebSocketService.this.webSocketClient = ws; // Already set before calling newWebSocket
             }
 
             @Override
             public void onMessage(WebSocket ws, String text) {
                 super.onMessage(ws, text);
-                if (!wsUrlToConnect.equals(currentWebSocketUrl) || WebSocketService.this.webSocketClient != ws) {
-                     Log.w(TAG, "onMessage from a stale/unexpected WebSocket instance. Ignoring."); return;
+                 if (!wsUrlToConnect.equals(currentWebSocketUrl) || WebSocketService.this.webSocketClient != ws) {
+                     Log.w(TAG, "onMessage (text): From a STALE/UNEXPECTED WebSocket instance. Ignoring."); return;
                 }
-                Log.i(TAG, "WS Message from " + displayUrl + ": " + text);
+                Log.i(TAG, "onMessage (text) from '" + displayUrl + "': " + text);
+                // ... (rest of JSON parsing from previous correct version)
                 try {
                     JSONObject json = new JSONObject(text);
                     String event = json.optString("event", "unknown_event");
@@ -267,42 +269,37 @@ public class WebSocketService extends Service {
             public void onMessage(WebSocket ws, ByteString bytes) {
                 super.onMessage(ws, bytes);
                  if (!wsUrlToConnect.equals(currentWebSocketUrl) || WebSocketService.this.webSocketClient != ws) {
-                     Log.w(TAG, "onMessage (bytes) from a stale/unexpected WebSocket instance. Ignoring."); return;
+                     Log.w(TAG, "onMessage (bytes): From a STALE/UNEXPECTED WebSocket instance. Ignoring."); return;
                 }
-                Log.i(TAG, "WS Receiving bytes from " + displayUrl + ": " + bytes.hex() + " (not processed)");
+                Log.i(TAG, "onMessage (bytes) from '" + displayUrl + "': " + bytes.hex());
             }
 
             @Override
             public void onClosing(WebSocket ws, int code, String reason) {
                 super.onClosing(ws, code, reason);
-                Log.i(TAG, "WebSocket Closing: " + code + " / " + reason + " for URL: " + wsUrlToConnect);
+                Log.i(TAG, "onClosing: Code=" + code + ", Reason='" + reason + "' for URL: '" + wsUrlToConnect + "'");
             }
 
             @Override
             public void onClosed(WebSocket ws, int code, String reason) {
                 super.onClosed(ws, code, reason);
-                Log.i(TAG, "WebSocket Closed: " + code + " / " + reason + " for URL: " + wsUrlToConnect);
-                // Check if this closed event is for the WebSocket client we care about
-                if (WebSocketService.this.webSocketClient == ws) {
-                    WebSocketService.this.webSocketClient = null; // Clear the active client
-                    String finalStatusMsg = "Disconnected from: " + displayUrl + " (Reason: " + reason + ", Code: " + code + ")";
+                Log.i(TAG, "onClosed: Code=" + code + ", Reason='" + reason + "' for URL: '" + wsUrlToConnect + "'");
+                if (WebSocketService.this.webSocketClient == ws) { // Check if this is the one we care about
+                    Log.d(TAG, "onClosed: This was the active webSocketClient.");
+                    WebSocketService.this.webSocketClient = null;
+                    String finalStatusMsg = "Disconnected from: " + displayUrl + " (R: " + reason + ", C: " + code + ")";
                     sendBroadcastStatus(finalStatusMsg);
                     updateServiceNotification("Disconnected from ESP32");
 
-                    // Retry logic: only if not a clean/intentional close and service is still running for this URL
-                    boolean intentionalClose = (code == 1000 || code == 1001); // 1000=Normal, 1001=Going Away
+                    boolean intentionalClose = (code == 1000 || code == 1001);
                     if (!intentionalClose && currentWebSocketUrl != null && currentWebSocketUrl.equals(wsUrlToConnect) && isServiceRunningAsForeground) {
-                        Log.d(TAG, "Connection to " + wsUrlToConnect + " closed unexpectedly (code " + code + "). Will attempt retry.");
+                        Log.w(TAG, "onClosed: Connection to '" + wsUrlToConnect + "' closed unexpectedly (Code=" + code + "). Scheduling retry.");
                         handleConnectionFailure(wsUrlToConnect, "Connection closed (code " + code + ")");
-                    } else if (currentWebSocketUrl == null) {
-                        Log.d(TAG, "WebSocket closed but currentWebSocketUrl is null, likely explicit disconnect. No retry.");
-                    } else if (!currentWebSocketUrl.equals(wsUrlToConnect)) {
-                        Log.d(TAG, "WebSocket for " + wsUrlToConnect + " closed, but current target is " + currentWebSocketUrl + ". No retry for old URL.");
                     } else {
-                        Log.d(TAG, "WebSocket closed cleanly or retry not appropriate. Reason: " + reason + " Code: " + code);
+                        Log.d(TAG, "onClosed: Clean close or retry not appropriate. currentWebSocketUrl=" + currentWebSocketUrl + ", intentionalClose=" + intentionalClose);
                     }
                 } else {
-                     Log.w(TAG, "onClosed event for an old/unknown WebSocket instance (URL: " + wsUrlToConnect + "). Ignoring for retry logic.");
+                     Log.w(TAG, "onClosed: Event for an old/unknown WebSocket instance. Ignored for retry/status update. (Closed URL: " + wsUrlToConnect + ")");
                 }
             }
 
@@ -310,24 +307,25 @@ public class WebSocketService extends Service {
             public void onFailure(WebSocket ws, Throwable t, Response response) {
                 super.onFailure(ws, t, response);
                 String errorMsg = (t != null && t.getMessage() != null) ? t.getMessage() : "Unknown connection error";
-                Log.e(TAG, "WebSocket Failure for " + wsUrlToConnect + ": " + errorMsg, t);
-                // Check if this failure is for the WebSocket client we care about
-                if (WebSocketService.this.webSocketClient == ws) {
-                    WebSocketService.this.webSocketClient = null; // Clear the active client
+                String responseMsg = (response != null) ? response.message() + " (Code: " + response.code() + ")" : "No response";
+                Log.e(TAG, "onFailure: For URL '" + wsUrlToConnect + "'. Error: '" + errorMsg + "'. Response: '" + responseMsg + "'", t);
+                if (WebSocketService.this.webSocketClient == ws) { // Check if this is the one we care about
+                    Log.d(TAG, "onFailure: This was the active webSocketClient.");
+                    WebSocketService.this.webSocketClient = null;
                     handleConnectionFailure(wsUrlToConnect, errorMsg);
                 } else {
-                    Log.w(TAG, "onFailure event for an old/unknown WebSocket instance (URL: " + wsUrlToConnect + "). Ignoring for retry logic.");
+                    Log.w(TAG, "onFailure: Event for an old/unknown WebSocket instance. Ignored for retry/status update. (Failed URL: " + wsUrlToConnect + ")");
                 }
             }
         });
     }
 
     private void handleConnectionFailure(String failedWsUrl, String errorMessage) {
-        // Ensure we only retry if the service is still meant to be connected to THIS URL
+        Log.d(TAG, "handleConnectionFailure: URL='" + failedWsUrl + "', Error='" + errorMessage + "', currentTargetURL='" + currentWebSocketUrl + "', retries=" + connectionRetryCount);
         if (!isServiceRunningAsForeground || currentWebSocketUrl == null || !currentWebSocketUrl.equals(failedWsUrl)) {
-            Log.w(TAG, "handleConnectionFailure: Conditions not met for retry on " + failedWsUrl +
-                    " (service stopped, URL changed to " + currentWebSocketUrl + ", or explicit disconnect). Error: " + errorMessage);
-            if (currentWebSocketUrl != null && currentWebSocketUrl.equals(failedWsUrl)) { // If it was the current URL that failed but conditions changed
+            Log.w(TAG, "handleConnectionFailure: Conditions not met for retry. ServiceRunning=" + isServiceRunningAsForeground +
+                    ", currentURLMatch=" + (currentWebSocketUrl != null && currentWebSocketUrl.equals(failedWsUrl)));
+            if (currentWebSocketUrl != null && currentWebSocketUrl.equals(failedWsUrl)) {
                  sendBroadcastStatus("Connection Failed: " + errorMessage + " to " + failedWsUrl.replaceFirst("ws://", "").replaceFirst("/ws",""));
                  updateServiceNotification("Connection Failed");
             }
@@ -335,62 +333,62 @@ public class WebSocketService extends Service {
         }
 
         if (connectionRetryCount < MAX_CONNECTION_RETRIES) {
-            long delay = (long) (INITIAL_RETRY_DELAY_MS * Math.pow(1.8, connectionRetryCount)); // Slightly less aggressive backoff
+            long delay = (long) (INITIAL_RETRY_DELAY_MS * Math.pow(1.8, connectionRetryCount));
             delay = Math.min(delay, MAX_RETRY_DELAY_MS);
+            final int nextRetryNum = connectionRetryCount + 1; // Store for log, count increments after scheduling
 
-            final int nextRetryAttempt = connectionRetryCount + 1;
-            Log.d(TAG, "Retrying connection to: " + currentWebSocketUrl + " (Attempt " + nextRetryAttempt +
-                    " of " + MAX_CONNECTION_RETRIES + ") in " + (delay / 1000.0) + "s. Last Error: " + errorMessage);
+            Log.i(TAG, "handleConnectionFailure: Scheduling retry " + nextRetryNum + "/" + MAX_CONNECTION_RETRIES +
+                    " for '" + currentWebSocketUrl + "' in " + (delay / 1000.0) + "s. Last Error: " + errorMessage);
             String retryStatus = String.format(Locale.US,"Connection Failed to %s. Retrying (%d/%d)...",
                     currentWebSocketUrl.replaceFirst("ws://", "").replaceFirst("/ws",""),
-                    nextRetryAttempt, MAX_CONNECTION_RETRIES);
-
+                    nextRetryNum, MAX_CONNECTION_RETRIES);
             sendBroadcastStatus(retryStatus);
             updateServiceNotification("Connection Failed. Retrying...");
 
             retryHandler.postDelayed(() -> {
+                Log.d(TAG, "handleConnectionFailure: Retry runnable executing for '" + failedWsUrl + "'. Current target: '" + currentWebSocketUrl + "'");
                 if (isServiceRunningAsForeground && currentWebSocketUrl != null && currentWebSocketUrl.equals(failedWsUrl)) {
-                     // connectionRetryCount is incremented just before the connectWebSocket call in this block if it proceeds
-                    connectWebSocket(currentWebSocketUrl); // This will use the current connectionRetryCount
+                    Log.i(TAG, "handleConnectionFailure: Proceeding with retry attempt " + nextRetryNum + " for '" + currentWebSocketUrl + "'");
+                    // connectionRetryCount was already incremented before connectWebSocket is called again by this retry
+                    connectWebSocket(currentWebSocketUrl);
                 } else {
-                     Log.w(TAG, "Retry for " + failedWsUrl + " was scheduled but is now cancelled due to state change (URL/service state).");
+                     Log.w(TAG, "handleConnectionFailure: Retry for '" + failedWsUrl + "' cancelled due to state change during delay.");
                 }
             }, delay);
-            connectionRetryCount++; // Increment for the next potential failure of this attempt
+            connectionRetryCount++; // Increment for the *next* failure, if this retry also fails
         } else {
-            Log.e(TAG, "Max retry attempts ("+ MAX_CONNECTION_RETRIES +") reached for " + currentWebSocketUrl + ". Giving up. Last error: " + errorMessage);
+            Log.e(TAG, "handleConnectionFailure: Max retry attempts ("+ MAX_CONNECTION_RETRIES +") reached for '" + currentWebSocketUrl + "'. Giving up. Last error: " + errorMessage);
             sendBroadcastStatus("Connection Failed: Max retries for " + currentWebSocketUrl.replaceFirst("ws://", "").replaceFirst("/ws",""));
             updateServiceNotification("Connection Failed. Max retries.");
-            // currentWebSocketUrl = null; // Optional: Force user to explicitly reconnect.
         }
     }
 
     private void disconnectWebSocket(String reason) {
-        Log.i(TAG, "disconnectWebSocket called. Reason: " + reason);
-        cancelPendingRetries(); // Stop any retry attempts
+        Log.i(TAG, "disconnectWebSocket: Called. Reason='" + reason + "'. Current URL='" + currentWebSocketUrl + "'");
+        cancelPendingRetries();
         if (webSocketClient != null) {
-            Log.d(TAG, "Closing active WebSocket client for URL: " + currentWebSocketUrl);
-            webSocketClient.close(1000, reason); // 1000 Normal closure
+            Log.d(TAG, "disconnectWebSocket: Closing active WebSocket client (was connected to '" + currentWebSocketUrl + "').");
+            webSocketClient.close(1000, reason);
             webSocketClient = null;
+        } else {
+            Log.d(TAG, "disconnectWebSocket: No active webSocketClient to close.");
         }
-        // Important: Clear currentWebSocketUrl to signify no active connection target
-        // This prevents onClosed/onFailure from incorrect retry attempts after explicit disconnect.
-        currentWebSocketUrl = null;
-        connectionRetryCount = 0; // Reset retries
+        currentWebSocketUrl = null; // Essential to prevent retries after explicit disconnect
+        connectionRetryCount = 0;
         sendBroadcastStatus("Disconnected: " + reason);
-        // Foreground notification will be updated by onClosed or if explicitly stopped
+        Log.i(TAG, "disconnectWebSocket: Process completed. Broadcast sent.");
     }
 
     private void cancelPendingRetries() {
+        Log.d(TAG, "cancelPendingRetries: Removing any scheduled retry callbacks.");
         retryHandler.removeCallbacksAndMessages(null);
-        Log.d(TAG, "Cancelled any pending connection retries.");
     }
 
     private void sendBroadcastStatus(String status) {
         Intent intent = new Intent(ACTION_STATUS_UPDATE);
         intent.putExtra(EXTRA_STATUS, status);
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
-        Log.v(TAG, "Broadcast Sent - Status: " + status);
+        Log.v(TAG, "sendBroadcastStatus >> UI: " + status);
     }
 
     private void sendBroadcastMessage(String title, String body) {
@@ -398,9 +396,11 @@ public class WebSocketService extends Service {
         intent.putExtra(EXTRA_MESSAGE_TITLE, title);
         intent.putExtra(EXTRA_MESSAGE_BODY, body);
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+        Log.v(TAG, "sendBroadcastMessage >> UI: Title='" + title + "', Body='" + body.substring(0, Math.min(body.length(), 50)) + "...'");
     }
 
     private void createNotificationChannel(String channelId, String channelName, int importance) {
+        // ... (same as previous correct version)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(channelId, channelName, importance);
             if (NOTIFICATION_CHANNEL_ID_MESSAGES.equals(channelId)) {
@@ -411,77 +411,64 @@ public class WebSocketService extends Service {
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
             if (notificationManager != null) {
                 notificationManager.createNotificationChannel(channel);
-                Log.d(TAG, "Notification channel created/updated: " + channelId);
+                Log.d(TAG, "createNotificationChannel: Channel '" + channelId + "' created/updated.");
             } else {
-                Log.e(TAG, "NotificationManager is null, cannot create channel " + channelId);
+                Log.e(TAG, "createNotificationChannel: NotificationManager is null for channel '" + channelId + "'");
             }
         }
     }
 
     private void showDataNotification(String title, String message) {
+        // ... (same as previous correct version)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                Log.w(TAG, "POST_NOTIFICATIONS permission not granted. Cannot show data notification.");
+                Log.w(TAG, "showDataNotification: POST_NOTIFICATIONS permission NOT granted. Cannot show.");
                 return;
             }
         }
-
         Intent intent = new Intent(this, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this,
-                (int) System.currentTimeMillis(), // Unique request code for pending intent
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, (int) System.currentTimeMillis(), intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID_MESSAGES)
-                .setSmallIcon(R.drawable.ic_stat_message)
-                .setContentTitle(title)
-                .setContentText(message)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-                .setDefaults(Notification.DEFAULT_ALL); // Uses default sound, vibrate, light
-
-        NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
-        try {
-            notificationManager.notify(MESSAGE_NOTIFICATION_ID, builder.build());
-        } catch (SecurityException e) { // Should be rare with TIRAMISU check
-            Log.e(TAG, "SecurityException while trying to post data notification: " + e.getMessage());
-        }
+            .setSmallIcon(R.drawable.ic_stat_message)
+            .setContentTitle(title).setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)
+            .setContentIntent(pendingIntent).setDefaults(Notification.DEFAULT_ALL);
+        NotificationManagerCompat.from(this).notify(MESSAGE_NOTIFICATION_ID, builder.build());
+        Log.d(TAG, "showDataNotification: Sent. Title='" + title + "'");
     }
 
     private void stopServiceAndForeground() {
-        Log.i(TAG, "stopServiceAndForeground called.");
-        disconnectWebSocket("Service is stopping"); // Ensure WS is closed
+        Log.i(TAG, "stopServiceAndForeground: Initiated.");
+        disconnectWebSocket("Service is stopping (foreground cleanup)");
         cancelPendingRetries();
         if (isServiceRunningAsForeground) {
-            Log.d(TAG, "Stopping foreground state.");
-            stopForeground(true); // True to remove the notification
+            Log.d(TAG, "stopServiceAndForeground: Stopping foreground state now.");
+            stopForeground(true);
             isServiceRunningAsForeground = false;
         }
-        stopSelf(); // Stop the service instance
-        Log.i(TAG, "WebSocketService fully stopped and resources should be released.");
-        // Note: sendBroadcastStatus("Service Stopped") is often done by the component requesting the stop
-        // or can be done here if a final status is needed.
+        stopSelf();
+        Log.i(TAG, "stopServiceAndForeground: Service instance stopped. Final broadcast may have been missed by MainActivity if it's also destroying.");
     }
 
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
-        return null; // This service is not designed for binding
+        Log.d(TAG, "onBind: Called, returning null (not a bound service).");
+        return null;
     }
 
     @Override
     public void onDestroy() {
-        Log.i(TAG, "Service onDestroy. Cleaning up...");
-        disconnectWebSocket("Service being destroyed"); // Final attempt to close
+        Log.i(TAG, "onDestroy: Service Destroying. Cleaning up all resources.");
+        disconnectWebSocket("Service being destroyed (onDestroy)");
         cancelPendingRetries();
-        if (isServiceRunningAsForeground) { // Should already be false if stopServiceAndForeground was called
+        if (isServiceRunningAsForeground) {
             stopForeground(true);
             isServiceRunningAsForeground = false;
         }
         if (httpClient != null) {
-            // OkHttp recommends shutting down its dispatcher and connection pool for cleanup
+            Log.d(TAG, "onDestroy: Shutting down OkHttpClient dispatcher and connection pool.");
             httpClient.dispatcher().executorService().shutdown();
             httpClient.connectionPool().evictAll();
             try {
@@ -489,10 +476,10 @@ public class WebSocketService extends Service {
                     httpClient.cache().close();
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error closing OkHttp cache during onDestroy", e);
+                Log.e(TAG, "onDestroy: Error closing OkHttp cache: " + e.getMessage(), e);
             }
         }
-        Log.i(TAG, "Service resources cleaned up in onDestroy.");
+        Log.i(TAG, "onDestroy: Service fully destroyed.");
         super.onDestroy();
     }
 }
