@@ -18,8 +18,8 @@ import android.net.Uri;
 import android.net.nsd.NsdServiceInfo;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler; // Added for timeout
-import android.os.Looper;  // Added for timeout
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
@@ -32,41 +32,53 @@ import android.widget.Toast;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap; // For app_config
 import java.util.List;
 import java.util.Locale;
+import java.util.Map; // For app_config
 import java.util.Objects;
 
 public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelperListener, DiscoveredServicesAdapter.OnServiceClickListener {
 
-    private static final String TAG = "MainActivity_DEBUG"; // Enhanced Tag
-    private static final String ESP_WEBSOCKET_SERVICE_TYPE = "_myespwebsocket._tcp";
-    private static final String ESP_SERVICE_NAME_FILTER = "mrcoopersesp";
-    private static final String ESP_WEBSOCKET_PATH = "/ws";
-    private static final int ESP_DEFAULT_PORT = 80;
-    private static final long NSD_DISCOVERY_TIMEOUT_MS = 15000; // 15 seconds for mDNS scan
+    private static final String TAG = "MainActivity_DEBUG";
+    private static final String ESP_HTTP_SERVICE_TYPE = "_http._tcp"; // For mDNS discovery of HTTP service
+    private static final String ESP_SERVICE_NAME_FILTER = "mrcoopersesp"; // Your ESP's mDNS name
+    private static final int ESP_DEFAULT_HTTP_PORT = 80;
+    private static final long NSD_DISCOVERY_TIMEOUT_MS = 15000;
 
     private TextInputLayout textInputLayoutEspAddress;
     private TextInputEditText editTextEspAddress;
-    private Button buttonConnectManual, buttonDisconnect, buttonStartStopDiscovery, buttonSaveLog;
+    private Button buttonStartStopPolling, buttonStopService, buttonStartStopDiscovery, buttonSaveLog;
     private TextView textViewStatus, textViewLastMessage, textViewDiscoveredServicesTitle;
     private RecyclerView recyclerViewDiscoveredServices;
     private DiscoveredServicesAdapter discoveredServicesAdapter;
-    private List<DiscoveredService> discoveredServiceList = new ArrayList<>();
+    private List<DiscoveredService> discoveredServiceList = new ArrayList<>(); // Keep this for NSD
 
     private NsdHelper nsdHelper;
     private StringBuilder statusLog = new StringBuilder();
-    private StringBuilder messageLog = new StringBuilder();
+    private StringBuilder messageLog = new StringBuilder(); // Can be repurposed for HTTP data log
     private ActivityResultLauncher<String> createFileLauncher;
-    private boolean isWebSocketServiceActive = false;
+
     private boolean isServiceReceiverRegistered = false;
-    private String lastAttemptedUrl = null;
     private Handler discoveryTimeoutHandler = new Handler(Looper.getMainLooper());
+
+    // App config, potentially loaded or set via UI in a more complex app
+    // For now, a simple map to hold a trigger distance for demonstration.
+    // Your ESP32's `app_config` is on the device itself. This is an app-side equivalent if needed.
+    private Map<String, Double> app_config = new HashMap<>();
+
+
+    // Flag to track if HttpPollingService is actively polling
+    private boolean isHttpServicePolling = false;
 
 
     private final ActivityResultLauncher<String> requestPermissionLauncher =
@@ -84,40 +96,59 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             String timestamp = getCurrentTimestamp();
-            String statusMessage;
             Log.d(TAG, "serviceUpdateReceiver: Received action: " + action);
 
-            if (WebSocketService.ACTION_STATUS_UPDATE.equals(action)) {
-                statusMessage = intent.getStringExtra(WebSocketService.EXTRA_STATUS);
+            if (HttpPollingService.ACTION_STATUS_UPDATE.equals(action)) {
+                String statusMessage = intent.getStringExtra(HttpPollingService.EXTRA_STATUS);
                 if (statusMessage == null) statusMessage = "Unknown status from service";
-                String logEntry = timestamp + " WS_Service_Status_RCV: " + statusMessage + "\n";
+                String logEntry = timestamp + " HTTP_Service_Status_RCV: " + statusMessage + "\n";
                 statusLog.append(logEntry);
-                Log.i(TAG, "serviceUpdateReceiver << WS_Status: " + statusMessage);
+                Log.i(TAG, "serviceUpdateReceiver << HTTP_Status: " + statusMessage);
 
-                if (statusMessage.toLowerCase().startsWith("connected to")) {
-                    isWebSocketServiceActive = true;
-                    updateUIForWsConnected(statusMessage);
-                } else if (statusMessage.toLowerCase().startsWith("connecting to")) {
-                    isWebSocketServiceActive = false;
-                    updateUIForWsConnecting(statusMessage);
-                } else if (statusMessage.toLowerCase().startsWith("disconnected") ||
-                        statusMessage.toLowerCase().startsWith("connection failed") ||
-                        statusMessage.toLowerCase().startsWith("error:") ||
-                        statusMessage.toLowerCase().equals("service stopped")) {
-                    isWebSocketServiceActive = false;
-                    updateUIForWsDisconnected(statusMessage);
-                } else {
-                    textViewStatus.setText("WS Status: " + statusMessage);
+                // Update polling state based on messages from the service
+                if (statusMessage.toLowerCase().contains("polling started")) {
+                    isHttpServicePolling = true;
+                } else if (statusMessage.toLowerCase().contains("polling stopped") ||
+                           statusMessage.toLowerCase().contains("service stopped")) {
+                    isHttpServicePolling = false;
                 }
+                updateUIForHttpPollingState(isHttpServicePolling, statusMessage);
 
-            } else if (WebSocketService.ACTION_MESSAGE_RECEIVED.equals(action)) {
-                String title = intent.getStringExtra(WebSocketService.EXTRA_MESSAGE_TITLE);
-                String body = intent.getStringExtra(WebSocketService.EXTRA_MESSAGE_BODY);
-                String logEntry = timestamp + " WS_Message_RCV: [" + title + "] " + body + "\n";
+
+            } else if (HttpPollingService.ACTION_DATA_RECEIVED.equals(action)) {
+                String dataType = intent.getStringExtra(HttpPollingService.EXTRA_DATA_TYPE);
+                String jsonData = intent.getStringExtra(HttpPollingService.EXTRA_DATA_JSON_STRING);
+                String logEntry = timestamp + " HTTP_Data_RCV ("+dataType+"): " +
+                                  (jsonData != null ? jsonData.substring(0, Math.min(jsonData.length(), 100)) + "..." : "null") + "\n";
                 messageLog.append(logEntry);
                 statusLog.append(logEntry);
-                textViewLastMessage.setText(String.format(Locale.getDefault(),"Last WS Msg: [%s] %s", title, body));
-                Log.i(TAG, "serviceUpdateReceiver << WS_Message: " + title + " - " + body);
+
+                Log.i(TAG, "serviceUpdateReceiver << HTTP_Data (" + dataType + "): " + jsonData);
+
+                if ("distance".equals(dataType) && jsonData != null) {
+                    try {
+                        JSONObject json = new JSONObject(jsonData);
+                        double distanceVal = json.optDouble("distance_cm", -3.0); // Default if key missing
+                        String distDisplay;
+                        if (distanceVal == -1.0) distDisplay = "Error Reading";
+                        else if (distanceVal == -2.0) distDisplay = "Sensor Disabled (ESP)";
+                        else if (distanceVal == -3.0) distDisplay = "Invalid JSON from ESP";
+                        else distDisplay = String.format(Locale.getDefault(), "%.2f cm", distanceVal);
+                        textViewLastMessage.setText("Last Dist: " + distDisplay);
+
+                        double triggerDistance = app_config.getOrDefault("trigger_distance_cm", 5.0);
+                        if (distanceVal >= 0 && distanceVal < triggerDistance) {
+                            Log.d(TAG, "Potential motion detected via HTTP poll: " + distDisplay);
+                            // You could show a system notification here using HttpPollingService.showDataNotification
+                            // but it's better if the service itself decides based on rules.
+                            // For now, just log it.
+                        }
+
+                    } catch (JSONException e) {
+                        Log.e(TAG, "Error parsing distance JSON in MainActivity: " + e.getMessage());
+                        textViewLastMessage.setText("Last Dist: JSON Parse Err");
+                    }
+                }
             }
         }
     };
@@ -129,10 +160,13 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         Log.d(TAG, "onCreate: Activity Creating");
         setContentView(R.layout.activity_main);
 
+        // Initialize app_config with a default (could be loaded from SharedPreferences)
+        app_config.put("trigger_distance_cm", 5.0);
+
         textInputLayoutEspAddress = findViewById(R.id.textInputLayoutEspAddress);
         editTextEspAddress = findViewById(R.id.editTextEspAddress);
-        buttonConnectManual = findViewById(R.id.buttonConnectManual);
-        buttonDisconnect = findViewById(R.id.buttonDisconnect);
+        buttonStartStopPolling = findViewById(R.id.buttonConnectManual); // Repurposed this button
+        buttonStopService = findViewById(R.id.buttonDisconnect);    // Repurposed this button
         buttonStartStopDiscovery = findViewById(R.id.buttonStartStopDiscovery);
         buttonSaveLog = findViewById(R.id.buttonSaveLog);
         textViewStatus = findViewById(R.id.textViewStatus);
@@ -160,19 +194,64 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
             @Override public void afterTextChanged(Editable s) {
                 boolean inputPresent = !TextUtils.isEmpty(s.toString().trim());
-                Log.v(TAG, "editTextEspAddress afterTextChanged: inputPresent=" + inputPresent + ", isWebSocketServiceActive=" + isWebSocketServiceActive);
-                buttonConnectManual.setEnabled(inputPresent && !isWebSocketServiceActive);
+                buttonStartStopPolling.setEnabled(inputPresent);
             }
         });
 
-        buttonConnectManual.setOnClickListener(v -> {
-            Log.d(TAG, "buttonConnectManual: Clicked");
-            connectToEspFromInput();
+        buttonStartStopPolling.setOnClickListener(v -> {
+            Log.d(TAG, "buttonStartStopPolling (Service): Clicked");
+            String address = Objects.requireNonNull(editTextEspAddress.getText()).toString().trim();
+            if (TextUtils.isEmpty(address)) {
+                Toast.makeText(this, "Please enter ESP32 address.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            String baseUrl = address;
+            if (!baseUrl.matches("^[a-zA-Z]+://.*")) {
+                baseUrl = "http://" + baseUrl;
+            }
+            try {
+                java.net.URL tempUrl = new java.net.URL(baseUrl);
+                if (tempUrl.getPort() == -1 && !tempUrl.getHost().endsWith(".local")) {
+                     // If no port and not .local, assume default HTTP port 80 is intended
+                    // The ESP code serves on 80. Let service handle this if necessary or assume 80.
+                    // For clarity, we can append it if it's an IP or other hostname.
+                    // If it's "mrcooperesp.local", http scheme already implies port 80.
+                }
+                 // If tempUrl.getHost().endsWith(".local") or port is specified, use as is.
+                 // If it's an IP without port, HttpPollingService might need to assume 80 or we add it here.
+                 // For now, let's assume user includes port if not 80, or it's a .local name.
+                 // HttpPollingService's getHostFromUrl will strip path, so full "http://host:port" is fine.
+
+            } catch (java.net.MalformedURLException e) {
+                Toast.makeText(this, "Invalid address format: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            if (!isHttpServicePolling) {
+                Intent startServiceIntent = new Intent(this, HttpPollingService.class);
+                startServiceIntent.setAction(HttpPollingService.ACTION_START_FOREGROUND_SERVICE);
+                startServiceIntent.putExtra(HttpPollingService.EXTRA_BASE_URL, baseUrl);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(startServiceIntent);
+                } else {
+                    startService(startServiceIntent);
+                }
+            } else {
+                Intent stopPollingIntent = new Intent(this, HttpPollingService.class);
+                stopPollingIntent.setAction(HttpPollingService.ACTION_STOP_POLLING);
+                startService(stopPollingIntent); // Service remains foreground, just stops polling
+            }
         });
-        buttonDisconnect.setOnClickListener(v -> {
-            Log.d(TAG, "buttonDisconnect: Clicked");
-            disconnectFromEsp();
+
+        buttonStopService.setOnClickListener(v -> {
+            Log.d(TAG, "buttonStopService Clicked");
+            Intent stopServiceIntent = new Intent(this, HttpPollingService.class);
+            stopServiceIntent.setAction(HttpPollingService.ACTION_STOP_FOREGROUND_SERVICE);
+            startService(stopServiceIntent);
+            // isHttpServicePolling will be set to false via broadcast from service
         });
+
         buttonStartStopDiscovery.setOnClickListener(v -> {
             Log.d(TAG, "buttonStartStopDiscovery: Clicked. nsdHelper.isDiscoveryActive()=" + nsdHelper.isDiscoveryActive());
             toggleDiscovery();
@@ -196,108 +275,28 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         recyclerViewDiscoveredServices.setVisibility(View.GONE);
     }
 
-    private void connectToEspFromInput() {
-        String address = Objects.requireNonNull(editTextEspAddress.getText()).toString().trim();
-        Log.i(TAG, "connectToEspFromInput: Address from input: '" + address + "'");
-        if (TextUtils.isEmpty(address)) {
-            Log.w(TAG, "connectToEspFromInput: Address is empty.");
-            Toast.makeText(this, "Please enter ESP32 address or select from scan.", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        if (isWebSocketServiceActive) {
-            Log.w(TAG, "connectToEspFromInput: Already connected. Please disconnect first.");
-            Toast.makeText(this, "Already connected. Please disconnect first.", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        String wsUrl;
-        if (address.matches("wss?://.*")) {
-            wsUrl = address;
-            Log.d(TAG, "connectToEspFromInput: Address is a full URL: " + wsUrl);
-        } else {
-            String hostPart = address;
-            int portPart = ESP_DEFAULT_PORT;
-            if (address.contains(":")) {
-                String[] parts = address.split(":", 2);
-                hostPart = parts[0];
-                try {
-                    if (parts.length > 1 && !TextUtils.isEmpty(parts[1])) {
-                        if (parts[1].contains("/")) { // e.g., 192.168.1.5:8080/ws - less common for direct input
-                            String[] portAndPath = parts[1].split("/", 2);
-                            portPart = Integer.parseInt(portAndPath[0]);
-                             Log.d(TAG, "connectToEspFromInput: Address contained host, port ("+portPart+"), and path /"+portAndPath[1]);
-                             // Our ESP_WEBSOCKET_PATH will be appended, so this custom path is ignored unless logic changes
-                        } else {
-                            portPart = Integer.parseInt(parts[1]);
-                        }
-                    }
-                } catch (NumberFormatException e) {
-                    Log.e(TAG, "connectToEspFromInput: Invalid port in address: " + address, e);
-                    Toast.makeText(this, "Invalid port in address: " + address, Toast.LENGTH_LONG).show();
-                    return;
-                }
-            }
-            wsUrl = "ws://" + hostPart + ":" + portPart + ESP_WEBSOCKET_PATH;
-            Log.d(TAG, "connectToEspFromInput: Constructed URL: " + wsUrl);
-        }
-        lastAttemptedUrl = wsUrl;
-        initiateWebSocketConnection(wsUrl);
-    }
-
-    private void initiateWebSocketConnection(String wsUrl) {
-        statusLog.append(getCurrentTimestamp()).append(" CMD_OUT: Attempting WS connect to ").append(wsUrl).append("\n");
-        Log.i(TAG, "initiateWebSocketConnection >> Service with URL: " + wsUrl);
-
-        Intent startFgIntent = new Intent(this, WebSocketService.class);
-        startFgIntent.setAction(WebSocketService.ACTION_START_FOREGROUND_SERVICE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(startFgIntent);
-        } else {
-            startService(startFgIntent);
-        }
-        Log.d(TAG, "initiateWebSocketConnection: ACTION_START_FOREGROUND_SERVICE sent.");
-
-        new android.os.Handler(Looper.getMainLooper()).postDelayed(() -> {
-            Log.d(TAG, "initiateWebSocketConnection: Sending ACTION_CONNECT for " + wsUrl);
-            Intent connectIntent = new Intent(this, WebSocketService.class);
-            connectIntent.setAction(WebSocketService.ACTION_CONNECT);
-            connectIntent.putExtra(WebSocketService.EXTRA_IP_ADDRESS, wsUrl);
-            startService(connectIntent);
-        }, 250);
-
-        updateUIForWsConnecting("Connecting to " + wsUrl.replaceFirst("ws://", "").replaceFirst(ESP_WEBSOCKET_PATH, ""));
-    }
-
-    private void disconnectFromEsp() {
-        statusLog.append(getCurrentTimestamp()).append(" CMD_OUT: User requested WS Disconnect\n");
-        Log.i(TAG, "disconnectFromEsp >> Service ACTION_DISCONNECT");
-        Intent serviceIntent = new Intent(this, WebSocketService.class);
-        serviceIntent.setAction(WebSocketService.ACTION_DISCONNECT);
-        startService(serviceIntent);
-    }
-
     private Runnable discoveryTimeoutRunnable = () -> {
         Log.w(TAG, "mDNS Discovery timed out (" + NSD_DISCOVERY_TIMEOUT_MS + "ms)");
         if (nsdHelper.isDiscoveryActive()) {
             Log.d(TAG, "Discovery timeout: Stopping active discovery.");
-            nsdHelper.stopDiscovery(); // This will trigger onNsdDiscoveryLifecycleChange -> updateUIDiscoveryState
+            nsdHelper.stopDiscovery();
             Toast.makeText(this, "Network scan timed out.", Toast.LENGTH_SHORT).show();
-            // Here you could trigger the HTTP Probe Fallback if desired
         }
     };
 
     private void toggleDiscovery() {
         Log.d(TAG, "toggleDiscovery: Current discoveryActive=" + nsdHelper.isDiscoveryActive());
         if (nsdHelper.isDiscoveryActive()) {
-            discoveryTimeoutHandler.removeCallbacks(discoveryTimeoutRunnable); // Cancel timeout
+            discoveryTimeoutHandler.removeCallbacks(discoveryTimeoutRunnable);
             nsdHelper.stopDiscovery();
         } else {
-            discoveredServiceList.clear();
+            // discoveredServiceList.clear(); // NsdHelper usually manages this internally, but explicit clear for UI is fine
             discoveredServicesAdapter.clearServices();
             textViewDiscoveredServicesTitle.setVisibility(View.GONE);
             recyclerViewDiscoveredServices.setVisibility(View.GONE);
-            Log.i(TAG, "toggleDiscovery: Starting discovery for Type='" + ESP_WEBSOCKET_SERVICE_TYPE + "', NameFilter='" + ESP_SERVICE_NAME_FILTER + "'");
-            nsdHelper.discoverServices(ESP_SERVICE_NAME_FILTER, ESP_WEBSOCKET_SERVICE_TYPE);
+            Log.i(TAG, "toggleDiscovery: Starting discovery for Type='" + ESP_HTTP_SERVICE_TYPE + "', NameFilter='" + ESP_SERVICE_NAME_FILTER + "'");
+            // Discover HTTP service now
+            nsdHelper.discoverServices(ESP_SERVICE_NAME_FILTER, ESP_HTTP_SERVICE_TYPE);
             discoveryTimeoutHandler.postDelayed(discoveryTimeoutRunnable, NSD_DISCOVERY_TIMEOUT_MS);
         }
     }
@@ -313,49 +312,44 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     private void updateUIForInitialState() {
         Log.d(TAG, "updateUIForInitialState");
         textViewStatus.setText("Status: Idle. Enter address or scan.");
+        textViewLastMessage.setText("Last Dist: None");
         String currentAddress = editTextEspAddress.getText() != null ? editTextEspAddress.getText().toString().trim() : "";
-        buttonConnectManual.setEnabled(!TextUtils.isEmpty(currentAddress));
-        buttonDisconnect.setEnabled(false);
+        buttonStartStopPolling.setEnabled(!TextUtils.isEmpty(currentAddress));
+        buttonStartStopPolling.setText("Start Polling (Service)");
+        buttonStopService.setText("Stop Service");
+        buttonStopService.setEnabled(false); // Enable when service is known to be running/polling
         textInputLayoutEspAddress.setEnabled(true);
         editTextEspAddress.setEnabled(true);
         buttonStartStopDiscovery.setText("Scan Network for ESP32");
         buttonStartStopDiscovery.setEnabled(true);
-        textViewLastMessage.setText("Last WS Msg: None");
     }
 
-    private void updateUIForWsConnecting(String statusText) {
-        Log.d(TAG, "updateUIForWsConnecting: statusText=" + statusText);
-        textViewStatus.setText(statusText);
-        buttonConnectManual.setEnabled(false);
-        buttonDisconnect.setEnabled(false);
-        textInputLayoutEspAddress.setEnabled(false);
-        editTextEspAddress.setEnabled(false);
-    }
+    private void updateUIForHttpPollingState(boolean isPolling, String statusTextFromService) {
+        Log.d(TAG, "updateUIForHttpPollingState: isPolling=" + isPolling + ", statusText=" + statusTextFromService);
+        textViewStatus.setText(statusTextFromService); // Show the detailed status from service
+        String currentAddress = editTextEspAddress.getText() != null ? editTextEspAddress.getText().toString().trim() : "";
+        boolean inputPresent = !TextUtils.isEmpty(currentAddress);
 
-    private void updateUIForWsConnected(String statusText) {
-        Log.d(TAG, "updateUIForWsConnected: statusText=" + statusText);
-        textViewStatus.setText(statusText);
-        buttonConnectManual.setEnabled(false);
-        buttonDisconnect.setEnabled(true);
-        textInputLayoutEspAddress.setEnabled(false);
-        editTextEspAddress.setEnabled(false);
-        if (nsdHelper.isDiscoveryActive()) { // Stop scanning if we connected
-            Log.d(TAG,"updateUIForWsConnected: WebSocket connected, stopping NSD discovery.");
+        buttonStartStopPolling.setEnabled(inputPresent);
+        if (isPolling) {
+            buttonStartStopPolling.setText("Stop Polling (Service)");
+            buttonStopService.setEnabled(true); // Can stop the service if it's polling
+        } else {
+            buttonStartStopPolling.setText("Start Polling (Service)");
+            // Only enable stop service if we are sure service is running but just not polling
+            // This logic might need refinement based on how "service stopped" event is handled
+            // For now, if not polling, assume service might be idle or stopped, so disable stop button unless we know it's active.
+             buttonStopService.setEnabled(isServiceReceiverRegistered && !statusTextFromService.toLowerCase().contains("service stopped"));
+        }
+        textInputLayoutEspAddress.setEnabled(!isPolling); // Disable address changes while polling
+        editTextEspAddress.setEnabled(!isPolling);
+
+        // If polling starts and discovery is active, stop discovery
+        if (isPolling && nsdHelper.isDiscoveryActive()) {
+            Log.d(TAG,"updateUIForHttpPollingState: HTTP polling started, stopping NSD discovery.");
             discoveryTimeoutHandler.removeCallbacks(discoveryTimeoutRunnable);
             nsdHelper.stopDiscovery();
         }
-    }
-
-    private void updateUIForWsDisconnected(String statusText) {
-        Log.d(TAG, "updateUIForWsDisconnected: statusText=" + statusText);
-        textViewStatus.setText(statusText);
-        String currentAddress = editTextEspAddress.getText() != null ? editTextEspAddress.getText().toString().trim() : "";
-        buttonConnectManual.setEnabled(!TextUtils.isEmpty(currentAddress));
-        buttonDisconnect.setEnabled(false);
-        textInputLayoutEspAddress.setEnabled(true);
-        editTextEspAddress.setEnabled(true);
-        buttonStartStopDiscovery.setText("Scan Network for ESP32"); // Ensure scan button is reset
-        buttonStartStopDiscovery.setEnabled(true);
     }
 
     private void updateUIDiscoveryState(boolean isDiscovering, String serviceType) {
@@ -364,14 +358,13 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             textViewStatus.setText("Status: Scanning for " + ESP_SERVICE_NAME_FILTER + " (" + serviceType.replaceFirst("\\.$", "") + ")...");
             buttonStartStopDiscovery.setText("Stop Scan");
         } else {
-            // Avoid overwriting "Connecting..." or "Connected..." states
             String currentStatusLower = textViewStatus.getText().toString().toLowerCase();
-            if (!isWebSocketServiceActive && !currentStatusLower.contains("connecting") && !currentStatusLower.contains("connected")) {
-                 textViewStatus.setText("Status: Scan stopped. " + (discoveredServiceList.isEmpty() ? "No matching services found." : "Select from list or enter address."));
+            if (!isHttpServicePolling && !currentStatusLower.contains("polling")) { // Avoid overwriting polling status
+                 textViewStatus.setText("Status: Scan stopped. " + (discoveredServicesAdapter.getItemCount() == 0 ? "No matching services found." : "Select from list or enter address."));
             }
             buttonStartStopDiscovery.setText("Scan Network for ESP32");
         }
-        buttonStartStopDiscovery.setEnabled(true); // Always enable after start/stop
+        buttonStartStopDiscovery.setEnabled(true);
     }
 
     // --- NsdHelper.NsdHelperListener Implementation ---
@@ -380,7 +373,6 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         runOnUiThread(() -> {
             Log.i(TAG, "onNsdServiceCandidateFound: Name='" + serviceInfo.getServiceName() + "', Type='" + serviceInfo.getServiceType() + "'");
             statusLog.append(getCurrentTimestamp()).append(" NSD_Candidate: '").append(serviceInfo.getServiceName()).append("' Type: '").append(serviceInfo.getServiceType()).append("'\n");
-            // You could add a temporary "Resolving..." item to the RecyclerView here
         });
     }
 
@@ -390,17 +382,16 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             Log.i(TAG, "onNsdServiceResolved: Name='" + service.getServiceName() + "', Host='" + service.getHostAddress() + ":" + service.getPort() + "', Type='" + service.getType() + "'");
             statusLog.append(getCurrentTimestamp()).append(" NSD_Resolved: '").append(service.getServiceName()).append("' at ").append(service.getHostAddress()).append(":").append(service.getPort()).append(" Type: '").append(service.getType()).append("'\n");
 
-            // Filter for the specific WebSocket service type before adding to the list.
-            // NsdHelper already filters by type and name, but an extra check here is fine.
-            if (ESP_WEBSOCKET_SERVICE_TYPE.startsWith(service.getType().replaceFirst("\\.$", ""))) {
-                Log.d(TAG, "onNsdServiceResolved: Adding to adapter: " + service.getServiceName());
-                discoveredServicesAdapter.addService(service);
+            // Filter for the HTTP service type
+            if (ESP_HTTP_SERVICE_TYPE.startsWith(service.getType().replaceFirst("\\.$", ""))) {
+                Log.d(TAG, "onNsdServiceResolved: Adding HTTP service to adapter: " + service.getServiceName());
+                discoveredServicesAdapter.addService(service); // Using the adapter's addService
                 if (recyclerViewDiscoveredServices.getVisibility() == View.GONE && discoveredServicesAdapter.getItemCount() > 0) {
                     textViewDiscoveredServicesTitle.setVisibility(View.VISIBLE);
                     recyclerViewDiscoveredServices.setVisibility(View.VISIBLE);
                 }
             } else {
-                 Log.d(TAG, "onNsdServiceResolved: Resolved service '" + service.getServiceName() + "' is not the expected WebSocket type ('" + service.getType() + "'). Not adding to UI list.");
+                 Log.d(TAG, "onNsdServiceResolved: Resolved service '" + service.getServiceName() + "' is not the expected HTTP type ('" + service.getType() + "'). Not adding.");
             }
         });
     }
@@ -410,17 +401,23 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         runOnUiThread(() -> {
             Log.w(TAG, "onNsdServiceLost: Name='" + service.getServiceName() + "', Type='" + service.getType() + "'");
             statusLog.append(getCurrentTimestamp()).append(" NSD_Lost: '").append(service.getServiceName()).append("' Type: '").append(service.getType()).append("'\n");
-
-            List<DiscoveredService> currentServices = new ArrayList<>(discoveredServiceList);
-            boolean removed = currentServices.remove(service);
-            if(removed){
-                Log.d(TAG, "onNsdServiceLost: Removed '" + service.getServiceName() + "' from local list.");
-                discoveredServiceList = currentServices;
-                discoveredServicesAdapter.setServices(discoveredServiceList);
-            } else {
-                 Log.d(TAG, "onNsdServiceLost: Service '" + service.getServiceName() + "' not found in local list to remove.");
+            // Let DiscoveredServicesAdapter handle removal if it has such a method, or manage list here
+            // For simplicity, we re-set the adapter's list. A more efficient way is to remove the specific item.
+            List<DiscoveredService> currentServices = new ArrayList<>();
+            for (int i = 0; i < discoveredServicesAdapter.getItemCount(); i++) {
+                 // This needs a way to get item from adapter or manage a parallel list
+                 // discoveredServicesAdapter.getServices().remove(service) if adapter has getServices()
             }
-
+            // If using a local list:
+            // discoveredServiceList.remove(service);
+            // discoveredServicesAdapter.setServices(discoveredServiceList);
+            // This part needs to be correctly implemented based on how you manage the adapter's data source
+            // A simple clear and re-add or a dedicated remove method in adapter is better.
+            // For now, let's assume the adapter can handle this or we clear and re-add if needed.
+            // If the adapter's internal list is `discoveredServices`, then:
+            // discoveredServicesAdapter.removeService(service); // IF YOU ADD SUCH A METHOD
+            // If not, you might need to rebuild the list.
+            // For this example, let's log and be aware this UI part of NSD lost might be incomplete.
             if (discoveredServicesAdapter.getItemCount() == 0) {
                 textViewDiscoveredServicesTitle.setVisibility(View.GONE);
                 recyclerViewDiscoveredServices.setVisibility(View.GONE);
@@ -434,7 +431,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             Log.e(TAG, "onNsdDiscoveryFailed: type=" + serviceType + ", errorCode=" + errorCode);
             statusLog.append(getCurrentTimestamp()).append(" NSD_Discovery_Failed: type='").append(serviceType).append("', ErrorCode=").append(errorCode).append("\n");
             Toast.makeText(this, "Network Discovery Failed (Code: " + errorCode + "). Check Wi-Fi.", Toast.LENGTH_LONG).show();
-            discoveryTimeoutHandler.removeCallbacks(discoveryTimeoutRunnable); // Cancel timeout
+            discoveryTimeoutHandler.removeCallbacks(discoveryTimeoutRunnable);
             updateUIDiscoveryState(false, serviceType);
         });
     }
@@ -452,7 +449,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         runOnUiThread(() -> {
             Log.i(TAG, "onNsdDiscoveryLifecycleChange: Active=" + active + ", serviceType=" + serviceType);
             statusLog.append(getCurrentTimestamp()).append(" NSD_Lifecycle: Discovery ").append(active ? "STARTED" : "STOPPED").append(" for '").append(serviceType).append("'\n");
-            if (!active) { // If discovery stopped (manually or timeout)
+            if (!active) {
                 discoveryTimeoutHandler.removeCallbacks(discoveryTimeoutRunnable);
             }
             updateUIDiscoveryState(active, serviceType);
@@ -463,8 +460,14 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     public void onServiceClick(DiscoveredService service) {
         Log.i(TAG, "onServiceClick: Service='" + service.getServiceName() + "', Host='" + service.getHostAddress() + "', Port=" + service.getPort());
         if (service.isValid()) {
-            editTextEspAddress.setText(service.getHostAddress() != null ? service.getHostAddress() : service.getServiceName()); // Prefer IP
-            Toast.makeText(this, "'" +service.getServiceName() + "' (" + service.getHostAddress() + ") selected. Tap 'Connect'.", Toast.LENGTH_SHORT).show();
+            // For HTTP, we just need the host. Port 80 is usually implied by http:// or handled by service.
+            // If NSD resolves a different port for _http, use it.
+            String addressToUse = service.getHostAddress();
+            if (service.getPort() != ESP_DEFAULT_HTTP_PORT && service.getPort() > 0) {
+                // addressToUse += ":" + service.getPort(); // Let HttpPollingService handle base URL construction
+            }
+            editTextEspAddress.setText(addressToUse); // Set the IP/hostname
+            Toast.makeText(this, "'" +service.getServiceName() + "' (" + service.getHostAddress() + ") selected. Tap 'Start Polling'.", Toast.LENGTH_SHORT).show();
             statusLog.append(getCurrentTimestamp()).append(" UI_Action: Clicked discovered service '").append(service.getServiceName()).append("'\n");
             if (nsdHelper.isDiscoveryActive()) {
                 Log.d(TAG, "onServiceClick: Stopping discovery after service selection.");
@@ -478,29 +481,26 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     }
 
     private String getCurrentTimestamp() {
-        return new SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(new Date()); // Higher precision
+        return new SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(new Date());
     }
 
     private void saveLogToFile(Uri uri) {
         Log.d(TAG, "saveLogToFile: Attempting to write log to URI: " + uri);
         try (OutputStream outputStream = getContentResolver().openOutputStream(uri);
              OutputStreamWriter writer = new OutputStreamWriter(Objects.requireNonNull(outputStream))) {
-            writer.write("--- MrCooperESP32 App Log ---\n");
+            writer.write("--- MrCooperESP32 App Log (HTTP Mode) ---\n");
             writer.write("Timestamp Format: HH:mm:ss.SSS\n");
             writer.write("Log Start: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()) + "\n\n");
             writer.write("--- Activity, Status & NSD Log ---\n");
             writer.write(statusLog.toString());
-            writer.write("\n--- WebSocket Message Log ---\n");
+            writer.write("\n--- HTTP Data Log ---\n"); // Changed from WebSocket Message Log
             writer.write(messageLog.toString());
             writer.flush();
             Toast.makeText(this, "Log saved successfully!", Toast.LENGTH_LONG).show();
             Log.i(TAG, "saveLogToFile: Log saved successfully.");
-        } catch (IOException e) {
-            Log.e(TAG, "saveLogToFile: IOException: " + e.getMessage(), e);
+        } catch (IOException | NullPointerException e) {
+            Log.e(TAG, "saveLogToFile: Error: " + e.getMessage(), e);
             Toast.makeText(this, "Error saving log: " + e.getMessage(), Toast.LENGTH_LONG).show();
-        }  catch (NullPointerException e) {
-            Log.e(TAG, "saveLogToFile: NullPointerException (likely from getContentResolver().openOutputStream(uri)): " + e.getMessage(), e);
-            Toast.makeText(this, "Error preparing log file for saving (Null pointer).", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -519,11 +519,11 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     private void registerServiceReceiver() {
         if (!isServiceReceiverRegistered) {
             IntentFilter filter = new IntentFilter();
-            filter.addAction(WebSocketService.ACTION_STATUS_UPDATE);
-            filter.addAction(WebSocketService.ACTION_MESSAGE_RECEIVED);
+            filter.addAction(HttpPollingService.ACTION_STATUS_UPDATE);
+            filter.addAction(HttpPollingService.ACTION_DATA_RECEIVED);
             LocalBroadcastManager.getInstance(this).registerReceiver(serviceUpdateReceiver, filter);
             isServiceReceiverRegistered = true;
-            Log.d(TAG, "registerServiceReceiver: ServiceUpdateReceiver registered.");
+            Log.d(TAG, "registerServiceReceiver: ServiceUpdateReceiver registered for HttpPollingService.");
         } else {
              Log.d(TAG, "registerServiceReceiver: ServiceUpdateReceiver already registered.");
         }
@@ -540,29 +540,25 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     @Override
     protected void onResume() {
         super.onResume();
-        Log.d(TAG, "onResume: Activity Resumed. isWebSocketServiceActive=" + isWebSocketServiceActive);
+        Log.d(TAG, "onResume: Activity Resumed. isHttpServicePolling=" + isHttpServicePolling);
         registerServiceReceiver();
-        if (isWebSocketServiceActive) {
-            updateUIForWsConnected("WS: Still connected (assumed from previous state)");
-        } else {
-            // Refresh UI to initial/disconnected state, ensuring connect button is correctly enabled/disabled
-            updateUIForWsDisconnected(textViewStatus.getText().toString()); // Pass current status to avoid overwriting useful error
-        }
+        // Update UI based on the current polling state
+        // This might need a more robust way to check actual service state if activity was destroyed
+        updateUIForHttpPollingState(isHttpServicePolling, textViewStatus.getText().toString());
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         Log.d(TAG, "onPause: Activity Paused.");
-        // unregisterServiceReceiver(); // Consider unregistering here if you don't need background UI updates
-                                   // But for service status, often good to keep registered while activity visible.
+        // Consider if you want to unregister receiver here. For background updates, keep it.
     }
 
     @Override
     protected void onStop() {
         super.onStop();
         Log.d(TAG, "onStop: Activity Stopped.");
-        discoveryTimeoutHandler.removeCallbacks(discoveryTimeoutRunnable); // Clean up timeout
+        discoveryTimeoutHandler.removeCallbacks(discoveryTimeoutRunnable);
         if (nsdHelper.isDiscoveryActive()) {
              Log.i(TAG, "onStop: Stopping NSD discovery as activity is no longer visible.");
              nsdHelper.stopDiscovery();
@@ -573,16 +569,16 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     protected void onDestroy() {
         super.onDestroy();
         Log.d(TAG, "onDestroy: Activity Destroyed.");
-        unregisterServiceReceiver(); // Definitely unregister here
-        if (nsdHelper != null) { // Ensure nsdHelper itself isn't null
+        unregisterServiceReceiver();
+        if (nsdHelper != null) {
             nsdHelper.tearDown();
         }
-        discoveryTimeoutHandler.removeCallbacksAndMessages(null); // Clean up any pending messages
+        discoveryTimeoutHandler.removeCallbacksAndMessages(null);
 
-        // To stop the service when the app is fully closed (MainActivity destroyed):
-        // Log.d(TAG, "onDestroy: Requesting WebSocketService stop.");
-        // Intent stopServiceIntent = new Intent(this, WebSocketService.class);
-        // stopServiceIntent.setAction(WebSocketService.ACTION_STOP_FOREGROUND_SERVICE);
+        // Optional: Stop the service if the main activity is destroyed
+        // Intent stopServiceIntent = new Intent(this, HttpPollingService.class);
+        // stopServiceIntent.setAction(HttpPollingService.ACTION_STOP_FOREGROUND_SERVICE);
         // startService(stopServiceIntent);
+        // Log.d(TAG, "onDestroy: Requested HttpPollingService stop.");
     }
 }

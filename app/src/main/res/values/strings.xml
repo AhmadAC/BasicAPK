@@ -1,6 +1,11 @@
 <resources>
     <string name="app_name">Mr Coopers ESP32</string>
-    <!-- For Notification Channel for ESP32 messages -->
+
+    <!-- For Original Notification Channel (can be repurposed or kept if distinct features) -->
     <string name="channel_name">ESP32 Notifications</string>
     <string name="channel_description">Notifications received from the local ESP32 device.</string>
+
+    <!-- For New HTTP Notification Channel -->
+    <string name="channel_name_http">ESP32 HTTP Data</string>
+    <string name="channel_description_http">Notifications for data polled from ESP32 via HTTP.</string>
 </resources>

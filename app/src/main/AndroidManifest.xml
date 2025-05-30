@@ -32,7 +32,7 @@
         android:theme="@style/Theme.MyBasicApp"
         tools:targetApi="31"
         android:usesCleartextTraffic="true">
-        <!-- usesCleartextTraffic="true" is important for local ws:// connections -->
+        <!-- usesCleartextTraffic="true" is important for local http:// and ws:// connections -->
 
         <activity
             android:name=".MainActivity"
@@ -45,7 +45,7 @@
         </activity>
 
         <service
-            android:name=".WebSocketService"
+            android:name=".HttpPollingService" <!-- <<< CHANGED HERE -->
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
