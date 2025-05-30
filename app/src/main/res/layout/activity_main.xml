@@ -11,7 +11,7 @@
         android:id="@+id/editTextEspIp"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:hint="ESP32 (Auto-Discovering...)"
+        android:hint="Service Info (Auto-Discovering...)"
         android:inputType="textNoSuggestions"
         android:enabled="false"
         android:focusable="false"
@@ -23,8 +23,8 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <LinearLayout
-        android:id="@+id/layoutServiceControls"
+    <RadioGroup
+        android:id="@+id/radioGroupMonitorMode"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -33,55 +33,67 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
+        <RadioButton
+            android:id="@+id/radioButtonOta"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Monitor OTA" />
+
+        <RadioButton
+            android:id="@+id/radioButtonMainApp"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:checked="true"
+            android:text="Monitor Main App (WS)" />
+    </RadioGroup>
+
+    <LinearLayout
+        android:id="@+id/layoutDiscoveryControls"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/radioGroupMonitorMode"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- This button's ID is referenced as buttonStartStopDiscovery in MainActivity.java
+             but findViewById uses R.id.buttonStartService.
+             Ensure consistency or update findViewById. For now, assuming buttonStartService. -->
         <Button
             android:id="@+id/buttonStartService"
             style="?android:attr/buttonBarButtonStyle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Start Svc"
+            android:text="Start Discovery"
             android:layout_marginEnd="4dp"/>
 
-        <Button
-            android:id="@+id/buttonStopService"
-            style="?android:attr/buttonBarButtonStyle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Stop Svc"
-            android:layout_marginStart="4dp"/>
+         <!-- You might not need a separate stop button if buttonStartService toggles text/function,
+              but your MainActivity implies a single button buttonStartStopDiscovery.
+              The original XML had buttonStopService. If you keep two distinct buttons,
+              MainActivity needs to handle them separately.
+              The current MainActivity uses ONE button (buttonStartStopDiscovery)
+              which is assigned R.id.buttonStartService.
+              Let's remove the second button here to match that. -->
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/layoutConnectionControls"
+    <!-- This button's ID is referenced as buttonAction in MainActivity.java
+         but findViewById uses R.id.buttonConnect.
+         Ensure consistency or update findViewById. For now, assuming buttonConnect. -->
+    <Button
+        android:id="@+id/buttonConnect"
+        style="?android:attr/buttonBarButtonStyle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
         android:layout_marginTop="8dp"
-        app:layout_constraintTop_toBottomOf="@id/layoutServiceControls"
+        android:text="Action"
+        app:layout_constraintTop_toBottomOf="@id/layoutDiscoveryControls"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintEnd_toEndOf="parent"/>
 
-        <!-- This button's ID is referenced as buttonManualConnect in MainActivity.java
-             Make sure the ID matches what's used in findViewById. -->
-        <Button
-            android:id="@+id/buttonConnect"
-            style="?android:attr/buttonBarButtonStyle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Find/Connect ESP32"
-            android:layout_marginEnd="4dp"/>
-
-        <Button
-            android:id="@+id/buttonDisconnect"
-            style="?android:attr/buttonBarButtonStyle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Disconnect"
-            android:layout_marginStart="4dp"/>
-    </LinearLayout>
 
     <Button
         android:id="@+id/buttonSaveLog"
@@ -90,7 +102,7 @@
         android:layout_height="wrap_content"
         android:text="Save Log"
         android:layout_marginTop="8dp"
-        app:layout_constraintTop_toBottomOf="@id/layoutConnectionControls"
+        app:layout_constraintTop_toBottomOf="@id/buttonConnect"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
