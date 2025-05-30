@@ -12,13 +12,16 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:hint="Service Info (Auto-Discovering...)"
-        android:inputType="textNoSuggestions"
+        android:inputType="textMultiLine|textNoSuggestions"
+        android:minLines="2"
+        android:maxLines="3"
+        android:gravity="top|start"
         android:enabled="false"
         android:focusable="false"
         android:background="@android:color/transparent"
         android:paddingTop="8dp"
         android:paddingBottom="8dp"
-        android:textSize="16sp"
+        android:textSize="14sp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -49,40 +52,21 @@
             android:text="Monitor Main App (WS)" />
     </RadioGroup>
 
-    <LinearLayout
-        android:id="@+id/layoutDiscoveryControls"
+    <!-- Using a single button for Start/Stop Discovery -->
+    <!-- Its ID is buttonStartService, which MainActivity.java (buttonStartStopDiscovery variable) uses -->
+    <Button
+        android:id="@+id/buttonStartService"
+        style="?android:attr/buttonBarButtonStyle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
         android:layout_marginTop="8dp"
+        android:text="Start Discovery"
         app:layout_constraintTop_toBottomOf="@id/radioGroupMonitorMode"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintEnd_toEndOf="parent"/>
 
-        <!-- This button's ID is referenced as buttonStartStopDiscovery in MainActivity.java
-             but findViewById uses R.id.buttonStartService.
-             Ensure consistency or update findViewById. For now, assuming buttonStartService. -->
-        <Button
-            android:id="@+id/buttonStartService"
-            style="?android:attr/buttonBarButtonStyle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Start Discovery"
-            android:layout_marginEnd="4dp"/>
-
-         <!-- You might not need a separate stop button if buttonStartService toggles text/function,
-              but your MainActivity implies a single button buttonStartStopDiscovery.
-              The original XML had buttonStopService. If you keep two distinct buttons,
-              MainActivity needs to handle them separately.
-              The current MainActivity uses ONE button (buttonStartStopDiscovery)
-              which is assigned R.id.buttonStartService.
-              Let's remove the second button here to match that. -->
-    </LinearLayout>
-
-    <!-- This button's ID is referenced as buttonAction in MainActivity.java
-         but findViewById uses R.id.buttonConnect.
-         Ensure consistency or update findViewById. For now, assuming buttonConnect. -->
+    <!-- Using a single button for Action (Open Page / Connect WS / Disconnect WS) -->
+    <!-- Its ID is buttonConnect, which MainActivity.java (buttonAction variable) uses -->
     <Button
         android:id="@+id/buttonConnect"
         style="?android:attr/buttonBarButtonStyle"
@@ -90,7 +74,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="Action"
-        app:layout_constraintTop_toBottomOf="@id/layoutDiscoveryControls"
+        app:layout_constraintTop_toBottomOf="@id/buttonStartService"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
@@ -112,7 +96,7 @@
         android:layout_height="wrap_content"
         android:text="Status: Idle"
         android:layout_marginTop="16dp"
-        android:textSize="18sp"
+        android:textSize="16sp"
         android:textAppearance="?attr/textAppearanceBody1"
         app:layout_constraintTop_toBottomOf="@id/buttonSaveLog"
         app:layout_constraintStart_toStartOf="parent"
@@ -124,6 +108,7 @@
         android:layout_height="wrap_content"
         android:text="Last Message: None"
         android:layout_marginTop="8dp"
+        android:textSize="14sp"
         android:textAppearance="?attr/textAppearanceBody2"
         app:layout_constraintTop_toBottomOf="@id/textViewStatus"
         app:layout_constraintStart_toStartOf="parent"
