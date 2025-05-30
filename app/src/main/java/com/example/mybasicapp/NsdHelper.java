@@ -27,6 +27,11 @@ public class NsdHelper {
         void onNsdDiscoveryFailed(String serviceType, int errorCode);
         void onNsdResolveFailed(NsdServiceInfo serviceInfo, int errorCode);
         void onNsdDiscoveryStatusChanged(String statusMessage); // General status updates
+
+        // Added missing methods that MainActivity implements
+        void onNsdServiceFound(NsdServiceInfo serviceInfo);
+        void onNsdDiscoveryStarted();
+        void onNsdDiscoveryStopped();
     }
 
     private NsdHelperListener listener;
@@ -46,12 +51,20 @@ public class NsdHelper {
             public void onDiscoveryStarted(String regType) {
                 Log.i(TAG, "NSD Service discovery started for type: " + regType);
                 discoveryActive = true;
-                if (listener != null) listener.onNsdDiscoveryStatusChanged("Discovery started for " + regType);
+                if (listener != null) {
+                    listener.onNsdDiscoveryStarted(); // Use specific callback
+                }
             }
 
             @Override
             public void onServiceFound(NsdServiceInfo service) {
                 Log.d(TAG, "NSD Service candidate found: Name='" + service.getServiceName() + "', Type='" + service.getServiceType() + "'");
+                
+                // Notify listener that a candidate is found, before attempting to filter or resolve
+                if (listener != null) {
+                    listener.onNsdServiceFound(service);
+                }
+
                 // The serviceType from NsdServiceInfo can sometimes include the domain, e.g., "_myespwebsocket._tcp.local."
                 // Using startsWith is more robust.
                 if (service.getServiceType() != null && service.getServiceType().startsWith(SERVICE_TYPE.substring(0, SERVICE_TYPE.indexOf(".")))) {
@@ -61,7 +74,7 @@ public class NsdHelper {
                         return;
                     }
                     Log.i(TAG, "Matching service type (and name if filtered) found: '" + service.getServiceName() + "'. Attempting to resolve.");
-                    if (listener != null) listener.onNsdDiscoveryStatusChanged("Found ESP32 candidate: " + service.getServiceName() + ". Resolving...");
+                    // listener.onNsdDiscoveryStatusChanged("Found ESP32 candidate: " + service.getServiceName() + ". Resolving..."); // This can be handled by MainActivity in onNsdServiceFound
 
                     // Resolve the service. Use a new ResolveListener for each attempt.
                     // Teardown any previous resolve listener
@@ -101,7 +114,9 @@ public class NsdHelper {
             public void onDiscoveryStopped(String serviceType) {
                 Log.i(TAG, "NSD Service discovery stopped for type: " + serviceType);
                 discoveryActive = false;
-                if (listener != null) listener.onNsdDiscoveryStatusChanged("Discovery stopped.");
+                if (listener != null) {
+                    listener.onNsdDiscoveryStopped(); // Use specific callback
+                }
             }
 
             @Override
