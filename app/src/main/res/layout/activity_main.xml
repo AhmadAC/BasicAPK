@@ -77,6 +77,47 @@
         app:layout_constraintEnd_toEndOf="parent"/>
 
     <TextView
+        android:id="@+id/textViewTriggerDistanceLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Trigger Distance (cm):"
+        android:layout_marginTop="12dp"
+        app:layout_constraintTop_toBottomOf="@id/buttonStartStopDiscovery"
+        app:layout_constraintStart_toStartOf="parent"/>
+
+    <TextView
+        android:id="@+id/textViewTriggerDistanceValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="50 cm"
+        android:layout_marginStart="8dp"
+        app:layout_constraintStart_toEndOf="@id/textViewTriggerDistanceLabel"
+        app:layout_constraintTop_toTopOf="@id/textViewTriggerDistanceLabel"
+        app:layout_constraintBottom_toBottomOf="@id/textViewTriggerDistanceLabel"/>
+
+    <SeekBar
+        android:id="@+id/seekBarTriggerDistance"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:max="200"
+        android:progress="50"
+        android:layout_marginTop="4dp"
+        app:layout_constraintTop_toBottomOf="@id/textViewTriggerDistanceLabel"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <com.google.android.material.switchmaterial.SwitchMaterial
+        android:id="@+id/switchEnableNotifications"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Enable Background Notifications"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/seekBarTriggerDistance"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+
+    <TextView
         android:id="@+id/textViewDiscoveredServicesTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -85,7 +126,7 @@
         android:textSize="16sp"
         android:textStyle="italic"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/buttonStartStopDiscovery"
+        app:layout_constraintTop_toBottomOf="@id/switchEnableNotifications"
         app:layout_constraintStart_toStartOf="parent"/>
 
     <androidx.recyclerview.widget.RecyclerView
@@ -98,7 +139,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@+id/guidelineLogArea"
-        app:layout_constraintHeight_max="200dp"
+        app:layout_constraintHeight_max="150dp"
         app:layout_constraintVertical_bias="0.0"
         tools:listitem="@layout/list_item_discovered_service"
         tools:itemCount="2"/>
@@ -108,7 +149,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        app:layout_constraintGuide_end="120dp"/>
+        app:layout_constraintGuide_end="120dp"/> <!-- Adjusted Guideline -->
 
     <TextView
         android:id="@+id/textViewStatus"

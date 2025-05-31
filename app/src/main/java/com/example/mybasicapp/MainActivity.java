@@ -13,6 +13,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.net.nsd.NsdServiceInfo;
@@ -26,9 +27,12 @@ import android.text.TextWatcher;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CompoundButton;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
@@ -41,19 +45,27 @@ import java.io.OutputStreamWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap; // For app_config
+// import java.util.HashMap; // No longer using app_config map for these settings
 import java.util.List;
 import java.util.Locale;
-import java.util.Map; // For app_config
+// import java.util.Map; // No longer using app_config map
 import java.util.Objects;
 
 public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelperListener, DiscoveredServicesAdapter.OnServiceClickListener {
 
     private static final String TAG = "MainActivity_DEBUG";
-    private static final String ESP_HTTP_SERVICE_TYPE = "_http._tcp"; // For mDNS discovery of HTTP service
-    private static final String ESP_SERVICE_NAME_FILTER = "mrcoopersesp"; // Your ESP's mDNS name
+    private static final String ESP_HTTP_SERVICE_TYPE = "_http._tcp";
+    private static final String ESP_SERVICE_NAME_FILTER = "mrcoopersesp";
     private static final int ESP_DEFAULT_HTTP_PORT = 80;
     private static final long NSD_DISCOVERY_TIMEOUT_MS = 15000;
+
+    // SharedPreferences keys
+    private static final String PREFS_NAME = "MrCooperESP_Prefs";
+    private static final String PREF_TRIGGER_DISTANCE = "trigger_distance_cm";
+    private static final String PREF_NOTIFICATIONS_ENABLED = "notifications_enabled";
+    private static final int DEFAULT_TRIGGER_DISTANCE = 50; // cm
+    private static final boolean DEFAULT_NOTIFICATIONS_ENABLED = false;
+
 
     private TextInputLayout textInputLayoutEspAddress;
     private TextInputEditText editTextEspAddress;
@@ -61,24 +73,24 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     private TextView textViewStatus, textViewLastMessage, textViewDiscoveredServicesTitle;
     private RecyclerView recyclerViewDiscoveredServices;
     private DiscoveredServicesAdapter discoveredServicesAdapter;
-    private List<DiscoveredService> discoveredServiceList = new ArrayList<>(); // Keep this for NSD
+    private List<DiscoveredService> discoveredServiceList = new ArrayList<>();
 
     private NsdHelper nsdHelper;
     private StringBuilder statusLog = new StringBuilder();
-    private StringBuilder messageLog = new StringBuilder(); // Can be repurposed for HTTP data log
+    private StringBuilder messageLog = new StringBuilder();
     private ActivityResultLauncher<String> createFileLauncher;
 
     private boolean isServiceReceiverRegistered = false;
     private Handler discoveryTimeoutHandler = new Handler(Looper.getMainLooper());
 
-    // App config, potentially loaded or set via UI in a more complex app
-    // For now, a simple map to hold a trigger distance for demonstration.
-    // Your ESP32's `app_config` is on the device itself. This is an app-side equivalent if needed.
-    private Map<String, Double> app_config = new HashMap<>();
-
-
-    // Flag to track if HttpPollingService is actively polling
     private boolean isHttpServicePolling = false;
+
+    // New UI Elements
+    private SeekBar seekBarTriggerDistance;
+    private TextView textViewTriggerDistanceValue;
+    private SwitchMaterial switchEnableNotifications;
+
+    private SharedPreferences sharedPreferences;
 
 
     private final ActivityResultLauncher<String> requestPermissionLauncher =
@@ -105,7 +117,6 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
                 statusLog.append(logEntry);
                 Log.i(TAG, "serviceUpdateReceiver << HTTP_Status: " + statusMessage);
 
-                // Update polling state based on messages from the service
                 if (statusMessage.toLowerCase().contains("polling started")) {
                     isHttpServicePolling = true;
                 } else if (statusMessage.toLowerCase().contains("polling stopped") ||
@@ -128,7 +139,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
                 if ("distance".equals(dataType) && jsonData != null) {
                     try {
                         JSONObject json = new JSONObject(jsonData);
-                        double distanceVal = json.optDouble("distance_cm", -3.0); // Default if key missing
+                        double distanceVal = json.optDouble("distance_cm", -3.0);
                         String distDisplay;
                         if (distanceVal == -1.0) distDisplay = "Error Reading";
                         else if (distanceVal == -2.0) distDisplay = "Sensor Disabled (ESP)";
@@ -136,13 +147,8 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
                         else distDisplay = String.format(Locale.getDefault(), "%.2f cm", distanceVal);
                         textViewLastMessage.setText("Last Dist: " + distDisplay);
 
-                        double triggerDistance = app_config.getOrDefault("trigger_distance_cm", 5.0);
-                        if (distanceVal >= 0 && distanceVal < triggerDistance) {
-                            Log.d(TAG, "Potential motion detected via HTTP poll: " + distDisplay);
-                            // You could show a system notification here using HttpPollingService.showDataNotification
-                            // but it's better if the service itself decides based on rules.
-                            // For now, just log it.
-                        }
+                        // Notification logic is now primarily in HttpPollingService
+                        // It will use SharedPreferences for trigger distance and enabled status
 
                     } catch (JSONException e) {
                         Log.e(TAG, "Error parsing distance JSON in MainActivity: " + e.getMessage());
@@ -160,13 +166,12 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         Log.d(TAG, "onCreate: Activity Creating");
         setContentView(R.layout.activity_main);
 
-        // Initialize app_config with a default (could be loaded from SharedPreferences)
-        app_config.put("trigger_distance_cm", 5.0);
+        sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
         textInputLayoutEspAddress = findViewById(R.id.textInputLayoutEspAddress);
         editTextEspAddress = findViewById(R.id.editTextEspAddress);
-        buttonStartStopPolling = findViewById(R.id.buttonConnectManual); // Repurposed this button
-        buttonStopService = findViewById(R.id.buttonDisconnect);    // Repurposed this button
+        buttonStartStopPolling = findViewById(R.id.buttonConnectManual);
+        buttonStopService = findViewById(R.id.buttonDisconnect);
         buttonStartStopDiscovery = findViewById(R.id.buttonStartStopDiscovery);
         buttonSaveLog = findViewById(R.id.buttonSaveLog);
         textViewStatus = findViewById(R.id.textViewStatus);
@@ -174,8 +179,20 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         textViewDiscoveredServicesTitle = findViewById(R.id.textViewDiscoveredServicesTitle);
         recyclerViewDiscoveredServices = findViewById(R.id.recyclerViewDiscoveredServices);
 
+        // New UI Elements
+        seekBarTriggerDistance = findViewById(R.id.seekBarTriggerDistance);
+        textViewTriggerDistanceValue = findViewById(R.id.textViewTriggerDistanceValue);
+        switchEnableNotifications = findViewById(R.id.switchEnableNotifications);
+
+        // Auto-fill ESP address
+        editTextEspAddress.setText("mrcoopersesp.local");
+
+
         setupRecyclerView();
         askNotificationPermission();
+        loadSettings(); // Load saved settings for slider and switch
+        setupNewUIListeners(); // Setup listeners for new UI elements
+
         Log.d(TAG, "onCreate: Initializing NsdHelper");
         nsdHelper = new NsdHelper(this, this);
 
@@ -211,18 +228,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
                 baseUrl = "http://" + baseUrl;
             }
             try {
-                java.net.URL tempUrl = new java.net.URL(baseUrl);
-                if (tempUrl.getPort() == -1 && !tempUrl.getHost().endsWith(".local")) {
-                     // If no port and not .local, assume default HTTP port 80 is intended
-                    // The ESP code serves on 80. Let service handle this if necessary or assume 80.
-                    // For clarity, we can append it if it's an IP or other hostname.
-                    // If it's "mrcooperesp.local", http scheme already implies port 80.
-                }
-                 // If tempUrl.getHost().endsWith(".local") or port is specified, use as is.
-                 // If it's an IP without port, HttpPollingService might need to assume 80 or we add it here.
-                 // For now, let's assume user includes port if not 80, or it's a .local name.
-                 // HttpPollingService's getHostFromUrl will strip path, so full "http://host:port" is fine.
-
+                new java.net.URL(baseUrl); // Validate URL format
             } catch (java.net.MalformedURLException e) {
                 Toast.makeText(this, "Invalid address format: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 return;
@@ -240,7 +246,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             } else {
                 Intent stopPollingIntent = new Intent(this, HttpPollingService.class);
                 stopPollingIntent.setAction(HttpPollingService.ACTION_STOP_POLLING);
-                startService(stopPollingIntent); // Service remains foreground, just stops polling
+                startService(stopPollingIntent);
             }
         });
 
@@ -249,7 +255,6 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             Intent stopServiceIntent = new Intent(this, HttpPollingService.class);
             stopServiceIntent.setAction(HttpPollingService.ACTION_STOP_FOREGROUND_SERVICE);
             startService(stopServiceIntent);
-            // isHttpServicePolling will be set to false via broadcast from service
         });
 
         buttonStartStopDiscovery.setOnClickListener(v -> {
@@ -265,6 +270,49 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         registerServiceReceiver();
         Log.d(TAG, "onCreate: Activity Created");
     }
+
+    private void loadSettings() {
+        int triggerDistance = sharedPreferences.getInt(PREF_TRIGGER_DISTANCE, DEFAULT_TRIGGER_DISTANCE);
+        boolean notificationsEnabled = sharedPreferences.getBoolean(PREF_NOTIFICATIONS_ENABLED, DEFAULT_NOTIFICATIONS_ENABLED);
+
+        seekBarTriggerDistance.setProgress(triggerDistance);
+        textViewTriggerDistanceValue.setText(String.format(Locale.getDefault(), "%d cm", triggerDistance));
+        switchEnableNotifications.setChecked(notificationsEnabled);
+        Log.d(TAG, "loadSettings: TriggerDist=" + triggerDistance + "cm, NotificationsEnabled=" + notificationsEnabled);
+    }
+
+    private void saveTriggerDistance(int distance) {
+        sharedPreferences.edit().putInt(PREF_TRIGGER_DISTANCE, distance).apply();
+        Log.d(TAG, "saveTriggerDistance: Saved " + distance + "cm");
+    }
+
+    private void saveNotificationsEnabled(boolean enabled) {
+        sharedPreferences.edit().putBoolean(PREF_NOTIFICATIONS_ENABLED, enabled).apply();
+        Log.d(TAG, "saveNotificationsEnabled: Saved " + enabled);
+    }
+
+
+    private void setupNewUIListeners() {
+        seekBarTriggerDistance.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                textViewTriggerDistanceValue.setText(String.format(Locale.getDefault(), "%d cm", progress));
+                 if (fromUser) { // Save only if changed by user to avoid saving during initial load
+                    saveTriggerDistance(progress);
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {
+                // final save, in case onProgressChanged didn't catch the last user interaction for some reason
+                 saveTriggerDistance(seekBar.getProgress());
+            }
+        });
+
+        switchEnableNotifications.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            saveNotificationsEnabled(isChecked);
+        });
+    }
+
 
     private void setupRecyclerView() {
         Log.d(TAG, "setupRecyclerView()");
@@ -290,12 +338,10 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             discoveryTimeoutHandler.removeCallbacks(discoveryTimeoutRunnable);
             nsdHelper.stopDiscovery();
         } else {
-            // discoveredServiceList.clear(); // NsdHelper usually manages this internally, but explicit clear for UI is fine
             discoveredServicesAdapter.clearServices();
             textViewDiscoveredServicesTitle.setVisibility(View.GONE);
             recyclerViewDiscoveredServices.setVisibility(View.GONE);
             Log.i(TAG, "toggleDiscovery: Starting discovery for Type='" + ESP_HTTP_SERVICE_TYPE + "', NameFilter='" + ESP_SERVICE_NAME_FILTER + "'");
-            // Discover HTTP service now
             nsdHelper.discoverServices(ESP_SERVICE_NAME_FILTER, ESP_HTTP_SERVICE_TYPE);
             discoveryTimeoutHandler.postDelayed(discoveryTimeoutRunnable, NSD_DISCOVERY_TIMEOUT_MS);
         }
@@ -308,7 +354,6 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         statusLog.append(getCurrentTimestamp()).append(" CMD_OUT: Log Save Requested to ").append(fileName).append("\n");
     }
 
-    // --- UI Update Methods ---
     private void updateUIForInitialState() {
         Log.d(TAG, "updateUIForInitialState");
         textViewStatus.setText("Status: Idle. Enter address or scan.");
@@ -317,34 +362,32 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         buttonStartStopPolling.setEnabled(!TextUtils.isEmpty(currentAddress));
         buttonStartStopPolling.setText("Start Polling (Service)");
         buttonStopService.setText("Stop Service");
-        buttonStopService.setEnabled(false); // Enable when service is known to be running/polling
+        buttonStopService.setEnabled(false);
         textInputLayoutEspAddress.setEnabled(true);
         editTextEspAddress.setEnabled(true);
         buttonStartStopDiscovery.setText("Scan Network for ESP32");
         buttonStartStopDiscovery.setEnabled(true);
+
+        // Initial state for new controls (already handled by loadSettings)
     }
 
     private void updateUIForHttpPollingState(boolean isPolling, String statusTextFromService) {
         Log.d(TAG, "updateUIForHttpPollingState: isPolling=" + isPolling + ", statusText=" + statusTextFromService);
-        textViewStatus.setText(statusTextFromService); // Show the detailed status from service
+        textViewStatus.setText(statusTextFromService);
         String currentAddress = editTextEspAddress.getText() != null ? editTextEspAddress.getText().toString().trim() : "";
         boolean inputPresent = !TextUtils.isEmpty(currentAddress);
 
         buttonStartStopPolling.setEnabled(inputPresent);
         if (isPolling) {
             buttonStartStopPolling.setText("Stop Polling (Service)");
-            buttonStopService.setEnabled(true); // Can stop the service if it's polling
+            buttonStopService.setEnabled(true);
         } else {
             buttonStartStopPolling.setText("Start Polling (Service)");
-            // Only enable stop service if we are sure service is running but just not polling
-            // This logic might need refinement based on how "service stopped" event is handled
-            // For now, if not polling, assume service might be idle or stopped, so disable stop button unless we know it's active.
-             buttonStopService.setEnabled(isServiceReceiverRegistered && !statusTextFromService.toLowerCase().contains("service stopped"));
+             buttonStopService.setEnabled(isServiceReceiverRegistered && !statusTextFromService.toLowerCase().contains("service stopped") && !statusTextFromService.toLowerCase().contains("error"));
         }
-        textInputLayoutEspAddress.setEnabled(!isPolling); // Disable address changes while polling
+        textInputLayoutEspAddress.setEnabled(!isPolling);
         editTextEspAddress.setEnabled(!isPolling);
 
-        // If polling starts and discovery is active, stop discovery
         if (isPolling && nsdHelper.isDiscoveryActive()) {
             Log.d(TAG,"updateUIForHttpPollingState: HTTP polling started, stopping NSD discovery.");
             discoveryTimeoutHandler.removeCallbacks(discoveryTimeoutRunnable);
@@ -359,7 +402,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             buttonStartStopDiscovery.setText("Stop Scan");
         } else {
             String currentStatusLower = textViewStatus.getText().toString().toLowerCase();
-            if (!isHttpServicePolling && !currentStatusLower.contains("polling")) { // Avoid overwriting polling status
+            if (!isHttpServicePolling && !currentStatusLower.contains("polling")) {
                  textViewStatus.setText("Status: Scan stopped. " + (discoveredServicesAdapter.getItemCount() == 0 ? "No matching services found." : "Select from list or enter address."));
             }
             buttonStartStopDiscovery.setText("Scan Network for ESP32");
@@ -367,7 +410,6 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         buttonStartStopDiscovery.setEnabled(true);
     }
 
-    // --- NsdHelper.NsdHelperListener Implementation ---
     @Override
     public void onNsdServiceCandidateFound(NsdServiceInfo serviceInfo) {
         runOnUiThread(() -> {
@@ -382,10 +424,9 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             Log.i(TAG, "onNsdServiceResolved: Name='" + service.getServiceName() + "', Host='" + service.getHostAddress() + ":" + service.getPort() + "', Type='" + service.getType() + "'");
             statusLog.append(getCurrentTimestamp()).append(" NSD_Resolved: '").append(service.getServiceName()).append("' at ").append(service.getHostAddress()).append(":").append(service.getPort()).append(" Type: '").append(service.getType()).append("'\n");
 
-            // Filter for the HTTP service type
             if (ESP_HTTP_SERVICE_TYPE.startsWith(service.getType().replaceFirst("\\.$", ""))) {
                 Log.d(TAG, "onNsdServiceResolved: Adding HTTP service to adapter: " + service.getServiceName());
-                discoveredServicesAdapter.addService(service); // Using the adapter's addService
+                discoveredServicesAdapter.addService(service);
                 if (recyclerViewDiscoveredServices.getVisibility() == View.GONE && discoveredServicesAdapter.getItemCount() > 0) {
                     textViewDiscoveredServicesTitle.setVisibility(View.VISIBLE);
                     recyclerViewDiscoveredServices.setVisibility(View.VISIBLE);
@@ -401,24 +442,14 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         runOnUiThread(() -> {
             Log.w(TAG, "onNsdServiceLost: Name='" + service.getServiceName() + "', Type='" + service.getType() + "'");
             statusLog.append(getCurrentTimestamp()).append(" NSD_Lost: '").append(service.getServiceName()).append("' Type: '").append(service.getType()).append("'\n");
-            // Let DiscoveredServicesAdapter handle removal if it has such a method, or manage list here
-            // For simplicity, we re-set the adapter's list. A more efficient way is to remove the specific item.
-            List<DiscoveredService> currentServices = new ArrayList<>();
-            for (int i = 0; i < discoveredServicesAdapter.getItemCount(); i++) {
-                 // This needs a way to get item from adapter or manage a parallel list
-                 // discoveredServicesAdapter.getServices().remove(service) if adapter has getServices()
-            }
-            // If using a local list:
+            // This requires a removeService method in adapter or managing the list here and calling setServices
+            // For simplicity, if adapter internal list 'discoveredServices' is modified:
+            // discoveredServicesAdapter.removeService(service); // You'd need to implement this in DiscoveredServicesAdapter
+            // Or rebuild if you manage the list directly in MainActivity
             // discoveredServiceList.remove(service);
-            // discoveredServicesAdapter.setServices(discoveredServiceList);
-            // This part needs to be correctly implemented based on how you manage the adapter's data source
-            // A simple clear and re-add or a dedicated remove method in adapter is better.
-            // For now, let's assume the adapter can handle this or we clear and re-add if needed.
-            // If the adapter's internal list is `discoveredServices`, then:
-            // discoveredServicesAdapter.removeService(service); // IF YOU ADD SUCH A METHOD
-            // If not, you might need to rebuild the list.
-            // For this example, let's log and be aware this UI part of NSD lost might be incomplete.
-            if (discoveredServicesAdapter.getItemCount() == 0) {
+            // discoveredServicesAdapter.setServices(new ArrayList<>(discoveredServiceList));
+             Toast.makeText(this, "Lost service: " + service.getServiceName(), Toast.LENGTH_SHORT).show();
+             if (discoveredServicesAdapter.getItemCount() == 0) { // Re-check after potential removal
                 textViewDiscoveredServicesTitle.setVisibility(View.GONE);
                 recyclerViewDiscoveredServices.setVisibility(View.GONE);
             }
@@ -460,13 +491,13 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     public void onServiceClick(DiscoveredService service) {
         Log.i(TAG, "onServiceClick: Service='" + service.getServiceName() + "', Host='" + service.getHostAddress() + "', Port=" + service.getPort());
         if (service.isValid()) {
-            // For HTTP, we just need the host. Port 80 is usually implied by http:// or handled by service.
-            // If NSD resolves a different port for _http, use it.
             String addressToUse = service.getHostAddress();
-            if (service.getPort() != ESP_DEFAULT_HTTP_PORT && service.getPort() > 0) {
-                // addressToUse += ":" + service.getPort(); // Let HttpPollingService handle base URL construction
-            }
-            editTextEspAddress.setText(addressToUse); // Set the IP/hostname
+            // Port is usually 80 for HTTP, mDNS can specify others but our service will form http://host
+            // If your ESP HTTP server is on a non-standard port found by NSD, you might need to append it:
+            // if (service.getPort() != ESP_DEFAULT_HTTP_PORT && service.getPort() > 0) {
+            //    addressToUse += ":" + service.getPort();
+            // }
+            editTextEspAddress.setText(addressToUse);
             Toast.makeText(this, "'" +service.getServiceName() + "' (" + service.getHostAddress() + ") selected. Tap 'Start Polling'.", Toast.LENGTH_SHORT).show();
             statusLog.append(getCurrentTimestamp()).append(" UI_Action: Clicked discovered service '").append(service.getServiceName()).append("'\n");
             if (nsdHelper.isDiscoveryActive()) {
@@ -493,7 +524,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             writer.write("Log Start: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()) + "\n\n");
             writer.write("--- Activity, Status & NSD Log ---\n");
             writer.write(statusLog.toString());
-            writer.write("\n--- HTTP Data Log ---\n"); // Changed from WebSocket Message Log
+            writer.write("\n--- HTTP Data Log ---\n");
             writer.write(messageLog.toString());
             writer.flush();
             Toast.makeText(this, "Log saved successfully!", Toast.LENGTH_LONG).show();
@@ -542,8 +573,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         super.onResume();
         Log.d(TAG, "onResume: Activity Resumed. isHttpServicePolling=" + isHttpServicePolling);
         registerServiceReceiver();
-        // Update UI based on the current polling state
-        // This might need a more robust way to check actual service state if activity was destroyed
+        loadSettings(); // Ensure UI reflects current settings on resume
         updateUIForHttpPollingState(isHttpServicePolling, textViewStatus.getText().toString());
     }
 
@@ -551,7 +581,6 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     protected void onPause() {
         super.onPause();
         Log.d(TAG, "onPause: Activity Paused.");
-        // Consider if you want to unregister receiver here. For background updates, keep it.
     }
 
     @Override
@@ -574,11 +603,5 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             nsdHelper.tearDown();
         }
         discoveryTimeoutHandler.removeCallbacksAndMessages(null);
-
-        // Optional: Stop the service if the main activity is destroyed
-        // Intent stopServiceIntent = new Intent(this, HttpPollingService.class);
-        // stopServiceIntent.setAction(HttpPollingService.ACTION_STOP_FOREGROUND_SERVICE);
-        // startService(stopServiceIntent);
-        // Log.d(TAG, "onDestroy: Requested HttpPollingService stop.");
     }
 }

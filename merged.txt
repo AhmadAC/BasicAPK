@@ -232,7 +232,7 @@ dependencies {
         </activity>
 
         <service
-            android:name=".HttpPollingService" <!-- <<< CHANGED HERE -->
+            android:name=".HttpPollingService" 
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
