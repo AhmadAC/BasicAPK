@@ -17,21 +17,5 @@
         <item name="android:statusBarColor" tools:targetApi="l">?attr/colorPrimaryVariant</item>
 
         <!-- Customize your theme here. -->
-        <!-- For example, to remove the action bar if you're using a Toolbar in your layout: -->
-        <!-- <item name="windowActionBar">false</item> -->
-        <!-- <item name="windowNoTitle">true</item> -->
-
-        <!-- You can also define other attributes like windowBackground, textColor, etc. -->
-        <!-- <item name="android:windowBackground">@color/white</item> -->
     </style>
-
-    <!-- Optional: A theme for a splash screen if you implement one -->
-    <!--
-    <style name="Theme.MyBasicApp.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/my_app_primary</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_round</item> Comment out if no round launcher or use ic_launcher
-        <item name="windowSplashScreenAnimationDuration">1000</item>
-        <item name="postSplashScreenTheme">@style/Theme.MyBasicApp</item>
-    </style>
-    -->
 </resources>

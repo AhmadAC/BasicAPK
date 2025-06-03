@@ -1,3 +1,29 @@
 <resources>
-    <string name="app_name">My Basic App</string>
+    <string name="app_name">My Alert App</string>
+
+    <string name="select_alert_sound">Select Alert Sound</string>
+    <string name="test_alert_sound">Test Alert Sound</string>
+    <string name="simulate_sensor_trigger">Simulate Sensor Trigger</string>
+    <string name="no_sound_selected">No sound selected.</string>
+    <string name="selected_sound_label">Selected: %s</string>
+
+    <string name="instructions_info">Select a sound file. Test it. Then simulate a sensor trigger to hear it play in the background (even with screen off). Check Logcat for \"AlertService\" and \"MainActivity\" tags, and internal storage for \"sensor_alerts.log\".</string>
+
+    <string name="notification_channel_name">Alert Sound Service</string>
+    <string name="notification_channel_description">Channel for foreground service playing alert sounds.</string>
+    <string name="notification_title_alert_playing">Alert Active</string>
+    <string name="notification_text_alert_playing">Playing custom alert sound.</string>
+
+    <string name="playing_test_sound">Playing test sound...</string>
+    <string name="test_sound_finished">Test sound finished.</string>
+    <string name="error_playing_sound">Error playing sound.</string>
+    <string name="error_preparing_sound">Error preparing sound.</string>
+    <string name="sound_selected_toast">Sound selected: %s</string>
+    <string name="sound_no_longer_accessible_toast">Previously selected sound is no longer accessible. Please select again.</string>
+    <string name="permission_denied_toast">Permission denied. Feature may not work.</string>
+    <string name="some_permissions_denied_toast">Some permissions were denied. Features might be limited.</string>
+    <string name="select_sound_first_toast">Please select an alert sound first.</string>
+    <string name="no_alert_sound_selected_service">No alert sound selected for service.</string>
+    <string name="sensor_triggered_toast">Sensor triggered! Playing alert in background.</string>
+
 </resources>

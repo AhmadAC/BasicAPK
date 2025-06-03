@@ -38,21 +38,17 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8 // Or 11, 17 to match JDK in workflow
-        targetCompatibility JavaVersion.VERSION_1_8 // Or 11, 17
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
     // If using Kotlin:
     // kotlinOptions {
-    //    jvmTarget = '1.8' // Or '11', '17'
+    //    jvmTarget = '1.8'
     // }
-
-    // It's good practice to define signing configurations,
-    // but for a basic debug APK, it's not strictly necessary for this example.
-    // For release builds, you would need to set up signing.
 }
 
 dependencies {
-    implementation 'androidx.core:core-ktx:1.12.0' // Or androidx.core:core for Java
+    implementation 'androidx.core:core:1.12.0' // Use androidx.core:core for Java
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
