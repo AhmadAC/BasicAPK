@@ -23,6 +23,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat; // <<< ADD THIS LINE
 import androidx.core.content.ContextCompat; // Added
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 

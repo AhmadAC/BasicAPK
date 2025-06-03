@@ -1,9 +1,10 @@
-Total files found and listed: 32
+Total files found and listed: 33
 List of all files found (paths relative to processing context):
 - .github\workflows\android_ci.yml
 - .gitignore
 - app\build.gradle
 - app\src\main\AndroidManifest.xml
+- app\src\main\java\com\example\mybasicapp\AlertSoundService.java
 - app\src\main\java\com\example\mybasicapp\DiscoveredService.java
 - app\src\main\java\com\example\mybasicapp\DiscoveredServicesAdapter.java
 - app\src\main\java\com\example\mybasicapp\HttpPollingService.java
@@ -33,7 +34,7 @@ List of all files found (paths relative to processing context):
 - gradle.properties
 - settings.gradle
 
-Content included for 21 file(s) with extensions: .java, .yml, .xml, .gradle, .properties
+Content included for 22 file(s) with extensions: .java, .yml, .xml, .gradle, .properties
 
 ================================================================================
 
@@ -202,12 +203,18 @@ dependencies {
 
     <!-- Permissions for Foreground Service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Allow specific types, HttpPollingService already uses dataSync -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <!-- If targeting Android 14 (API 34) or higher and your foreground service type is dataSync,
-         you might need to explicitly declare the type again here if issues arise,
-         though usually the manifest merge handles it.
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_TYPE_DATA_SYNC" />
-    -->
+    <!-- Add mediaPlayback for AlertSoundService -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+
+    <!-- Permissions for custom sound -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- For Android 12 (API 32) and below to read audio files -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- For Android 13 (API 33) and above, for specific media types -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
 
     <application
@@ -217,7 +224,7 @@ dependencies {
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyBasicApp"
-        tools:targetApi="31"
+        tools:targetApi="34"
         android:usesCleartextTraffic="true">
         <!-- usesCleartextTraffic="true" is important for local http:// and ws:// connections -->
 
@@ -232,15 +239,219 @@ dependencies {
         </activity>
 
         <service
-            android:name=".HttpPollingService" 
+            android:name=".HttpPollingService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
             <!-- foregroundServiceType is required for services targeting Android Q (API 29) and above -->
 
+        <service
+            android:name=".AlertSoundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
     </application>
 
 </manifest>
+
+#################### START OF FILE: app\src\main\java\com\example\mybasicapp\AlertSoundService.java ####################
+
+package com.example.mybasicapp;
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.ServiceInfo;
+import android.media.AudioAttributes;
+import android.media.MediaPlayer;
+import android.net.Uri;
+import android.os.Build;
+import android.os.IBinder;
+import android.os.PowerManager;
+import android.util.Log;
+
+import androidx.annotation.Nullable;
+import androidx.core.app.NotificationCompat;
+
+import java.io.IOException;
+
+public class AlertSoundService extends Service {
+
+    private static final String TAG = "AlertSoundService_DBG";
+    public static final String CUSTOM_ALERT_SOUND_CHANNEL_ID = "custom_alert_sound_service_channel";
+    private static final int CUSTOM_ALERT_NOTIFICATION_ID = 3; // Unique ID
+
+    public static final String ACTION_PLAY_CUSTOM_SOUND = "com.example.mybasicapp.ACTION_PLAY_CUSTOM_SOUND";
+    public static final String EXTRA_SOUND_URI = "EXTRA_SOUND_URI";
+
+    private MediaPlayer mediaPlayer;
+    private PowerManager.WakeLock wakeLock;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        Log.d(TAG, "onCreate: AlertSoundService creating.");
+        PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (powerManager != null) {
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MrCoopersESP::AlertSoundWakeLock");
+            wakeLock.setReferenceCounted(false);
+        }
+        createNotificationChannel(); // Create channel early
+        Log.d(TAG, "onCreate: AlertSoundService created.");
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent == null || intent.getAction() == null) {
+            Log.w(TAG, "onStartCommand: Null intent or action. Stopping service.");
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        String action = intent.getAction();
+        Log.i(TAG, "onStartCommand: Action='" + action + "'");
+
+        if (ACTION_PLAY_CUSTOM_SOUND.equals(action)) {
+            String soundUriString = intent.getStringExtra(EXTRA_SOUND_URI);
+            if (soundUriString != null) {
+                Uri soundUri = Uri.parse(soundUriString);
+                startForegroundWithNotification();
+                playSoundInBackground(soundUri);
+            } else {
+                Log.e(TAG, "ACTION_PLAY_CUSTOM_SOUND: Sound URI is missing! Stopping service.");
+                stopSelf();
+            }
+        } else {
+            Log.w(TAG, "onStartCommand: Unhandled action: " + action + ". Stopping service.");
+            stopSelf();
+        }
+        return START_NOT_STICKY;
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CUSTOM_ALERT_SOUND_CHANNEL_ID,
+                    getString(R.string.alert_sound_service_channel_name),
+                    NotificationManager.IMPORTANCE_LOW // Low importance for background service notification
+            );
+            channel.setDescription(getString(R.string.alert_sound_service_channel_description));
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+                Log.d(TAG, "Notification channel created: " + CUSTOM_ALERT_SOUND_CHANNEL_ID);
+            }
+        }
+    }
+
+    private void startForegroundWithNotification() {
+        Log.d(TAG, "startForegroundWithNotification called");
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
+                notificationIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
+        Notification notification = new NotificationCompat.Builder(this, CUSTOM_ALERT_SOUND_CHANNEL_ID)
+                .setContentTitle(getString(R.string.alert_sound_notification_title))
+                .setContentText(getString(R.string.alert_sound_notification_text))
+                .setSmallIcon(R.drawable.ic_stat_message) // Use an appropriate icon
+                .setContentIntent(pendingIntent)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build();
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                 startForeground(CUSTOM_ALERT_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+            } else {
+                startForeground(CUSTOM_ALERT_NOTIFICATION_ID, notification);
+            }
+            Log.i(TAG, "Service started in foreground for custom sound.");
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting foreground service for custom sound: " + e.getMessage(), e);
+        }
+    }
+
+    private void playSoundInBackground(Uri soundUri) {
+        Log.d(TAG, "playSoundInBackground: URI=" + soundUri);
+        if (mediaPlayer != null) {
+            mediaPlayer.release();
+        }
+        mediaPlayer = new MediaPlayer();
+        mediaPlayer.setAudioAttributes(
+                new AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .setUsage(AudioAttributes.USAGE_ALARM) // Important for alerts
+                        .build());
+
+        if (wakeLock != null && !wakeLock.isHeld()) {
+            wakeLock.acquire(10 * 60 * 1000L /* 10 minutes timeout */);
+            Log.d(TAG, "WakeLock acquired.");
+        }
+
+        try {
+            // Grant temporary permission to the media player if needed, by setting the URI on the intent to the service.
+            // MainActivity should have added Intent.FLAG_GRANT_READ_URI_PERMISSION
+            // Or, the URI must be persistable and permission already taken by MainActivity.
+            mediaPlayer.setDataSource(getApplicationContext(), soundUri);
+            mediaPlayer.prepareAsync();
+            mediaPlayer.setOnPreparedListener(mp -> {
+                Log.i(TAG, "MediaPlayer prepared, starting custom sound playback.");
+                mp.start();
+            });
+            mediaPlayer.setOnCompletionListener(mp -> {
+                Log.i(TAG, "Custom sound playback completed.");
+                cleanupAndStopService();
+            });
+            mediaPlayer.setOnErrorListener((mp, what, extra) -> {
+                Log.e(TAG, "MediaPlayer error during custom sound: what=" + what + ", extra=" + extra);
+                cleanupAndStopService();
+                return true; // Error handled
+            });
+        } catch (IOException e) {
+            Log.e(TAG, "IOException for custom sound: " + e.getMessage(), e);
+            cleanupAndStopService();
+        } catch (SecurityException se) {
+            Log.e(TAG, "SecurityException for custom sound (URI permission issue?): " + se.getMessage(), se);
+            cleanupAndStopService();
+        }
+    }
+
+    private void cleanupAndStopService() {
+        Log.d(TAG, "cleanupAndStopService called");
+        if (mediaPlayer != null) {
+            if (mediaPlayer.isPlaying()) {
+                mediaPlayer.stop();
+            }
+            mediaPlayer.release();
+            mediaPlayer = null;
+            Log.d(TAG, "MediaPlayer released.");
+        }
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+            Log.d(TAG, "WakeLock released.");
+        }
+        stopForeground(true); // Remove notification
+        stopSelf(); // Stop the service
+        Log.i(TAG, "AlertSoundService stopped.");
+    }
+
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null; // Not a bound service
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        Log.d(TAG, "onDestroy: AlertSoundService destroyed.");
+        cleanupAndStopService(); // Ensure all resources are released
+    }
+}
 
 #################### START OF FILE: app\src\main\java\com\example\mybasicapp\DiscoveredService.java ####################
 
@@ -419,23 +630,32 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
+import android.net.Uri; // Added
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.OpenableColumns; // Added
 import android.util.Log;
+import android.database.Cursor; // Added
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat; // Added
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File; // Added
+import java.io.FileOutputStream; // Added
 import java.io.IOException;
+import java.io.OutputStreamWriter; // Added
+import java.text.SimpleDateFormat; // Added
+import java.util.Date; // Added
 import java.util.Locale;
 // import java.util.Objects; // Not strictly needed here anymore
 import java.util.concurrent.TimeUnit;
@@ -479,9 +699,17 @@ public class HttpPollingService extends Service {
     private static final String PREFS_NAME = "MrCooperESP_Prefs";
     private static final String PREF_TRIGGER_DISTANCE = "trigger_distance_cm";
     private static final String PREF_NOTIFICATIONS_ENABLED = "notifications_enabled";
+    // New keys for custom sound
+    private static final String PREF_CUSTOM_ALERT_SOUND_URI = "custom_alert_sound_uri";
+    private static final String PREF_CUSTOM_ALERT_SOUND_ENABLED = "custom_alert_sound_enabled";
+
     private static final int DEFAULT_TRIGGER_DISTANCE = 50; // cm
     private static final boolean DEFAULT_NOTIFICATIONS_ENABLED = false;
+    private static final boolean DEFAULT_CUSTOM_SOUND_ENABLED = true; // Default to true if a sound is selected
     private SharedPreferences sharedPreferences;
+
+    // For logging sensor triggers
+    private static final String SENSOR_TRIGGER_LOG_FILE_NAME_KEY = "log_sensor_trigger_file_name";
 
 
     @Override
@@ -639,20 +867,44 @@ public class HttpPollingService extends Service {
                             JSONObject json = new JSONObject(responseBodyString);
                             double distanceValCm = json.optDouble("distance_cm", -3.0);
 
-                            // Check for notification trigger
                             boolean notificationsEnabled = sharedPreferences.getBoolean(PREF_NOTIFICATIONS_ENABLED, DEFAULT_NOTIFICATIONS_ENABLED);
                             int triggerDistanceCm = sharedPreferences.getInt(PREF_TRIGGER_DISTANCE, DEFAULT_TRIGGER_DISTANCE);
+                            boolean customSoundEnabled = sharedPreferences.getBoolean(PREF_CUSTOM_ALERT_SOUND_ENABLED, DEFAULT_CUSTOM_SOUND_ENABLED);
+                            String customSoundUriString = sharedPreferences.getString(PREF_CUSTOM_ALERT_SOUND_URI, null);
 
-                            Log.d(TAG, "Notification check: Enabled=" + notificationsEnabled +
+                            Log.d(TAG, "Notification check: NotificationsEnabled=" + notificationsEnabled +
                                        ", TriggerDist=" + triggerDistanceCm + "cm" +
-                                       ", CurrentDist=" + distanceValCm + "cm");
+                                       ", CurrentDist=" + distanceValCm + "cm" +
+                                       ", CustomSoundEnabled=" + customSoundEnabled +
+                                       ", CustomSoundURI=" + (customSoundUriString != null));
 
                             if (notificationsEnabled && distanceValCm >= 0 && distanceValCm <= triggerDistanceCm) {
                                 String notificationMsg = String.format(Locale.getDefault(),
                                         "Object detected at %.1f cm (Trigger: <= %d cm)",
                                         distanceValCm, triggerDistanceCm);
-                                showDataNotification("Motion Alert", notificationMsg);
-                                Log.i(TAG, "Notification triggered: " + notificationMsg);
+                                showDataNotification("Motion Alert", notificationMsg); // Visual notification
+
+                                String customSoundFileName = "None";
+                                if (customSoundUriString != null) {
+                                    customSoundFileName = getFileNameFromContentUri(Uri.parse(customSoundUriString));
+                                }
+
+                                // Log the sensor trigger event
+                                logSensorTriggerToFile(String.format(Locale.getDefault(),
+                                        "Sensor triggered. Distance: %.1f cm (Threshold: <= %d cm). Visual notification shown. Custom sound: %s (Enabled: %b, URI Set: %b)",
+                                        distanceValCm, triggerDistanceCm, customSoundFileName, customSoundEnabled, (customSoundUriString != null)));
+
+                                // Play custom sound if enabled and URI is set
+                                if (customSoundEnabled && customSoundUriString != null) {
+                                    Uri soundUri = Uri.parse(customSoundUriString);
+                                    Intent alertSoundIntent = new Intent(HttpPollingService.this, AlertSoundService.class);
+                                    alertSoundIntent.setAction(AlertSoundService.ACTION_PLAY_CUSTOM_SOUND);
+                                    alertSoundIntent.putExtra(AlertSoundService.EXTRA_SOUND_URI, soundUri.toString());
+                                    // Grant read permission to the AlertSoundService for this URI
+                                    alertSoundIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                    ContextCompat.startForegroundService(HttpPollingService.this, alertSoundIntent);
+                                    Log.i(TAG, "Custom alert sound service started for: " + customSoundFileName);
+                                }
                             }
 
                         } catch (JSONException e_json) {
@@ -666,6 +918,60 @@ public class HttpPollingService extends Service {
                 }
             }
         });
+    }
+
+    private String getFileNameFromContentUri(Uri uri) {
+        String result = null;
+        if (uri == null) return "Unknown URI";
+        if ("content".equals(uri.getScheme())) {
+            try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int displayNameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (displayNameIndex != -1) {
+                        result = cursor.getString(displayNameIndex);
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting file name from content URI: " + uri, e);
+            }
+        }
+        if (result == null) {
+            result = uri.getPath();
+            if (result != null) {
+                int cut = result.lastIndexOf('/');
+                if (cut != -1) {
+                    result = result.substring(cut + 1);
+                }
+            } else {
+                result = uri.toString();
+            }
+        }
+        return result;
+    }
+
+    private void logSensorTriggerToFile(String message) {
+        File logFile = new File(getFilesDir(), getString(R.string.log_sensor_trigger_file_name));
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault());
+        String timestamp = sdf.format(new Date());
+        String logEntry = "[" + timestamp + "] " + message + "\n";
+
+        FileOutputStream fos = null;
+        OutputStreamWriter osw = null;
+        try {
+            fos = new FileOutputStream(logFile, true); // true for append mode
+            osw = new OutputStreamWriter(fos);
+            osw.write(logEntry);
+            Log.i(TAG, "Logged to sensor trigger file: " + message);
+        } catch (IOException e) {
+            Log.e(TAG, "Error writing to sensor trigger log file: " + logFile.getAbsolutePath(), e);
+        } finally {
+            try {
+                if (osw != null) osw.close();
+                else if (fos != null) fos.close();
+            } catch (IOException e) {
+                Log.e(TAG, "Error closing sensor trigger log file streams", e);
+            }
+        }
     }
 
 
@@ -759,13 +1065,12 @@ public class HttpPollingService extends Service {
             NotificationChannel channel = new NotificationChannel(channelId, channelName, importance);
             if (NOTIFICATION_CHANNEL_ID_MESSAGES.equals(channelId)) {
                 channel.setDescription(getString(R.string.channel_description_http));
-                // For alert notifications, enable lights, vibration, etc.
                 channel.enableLights(true);
                 channel.enableVibration(true);
-                // channel.setLightColor(Color.RED); // Example
-            } else {
+            } else if (NOTIFICATION_CHANNEL_ID_SERVICE.equals(channelId)) {
                  channel.setDescription("Channel for ESP32 HTTP Polling Service status.");
             }
+            // AlertSoundService creates its own channel
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
             if (notificationManager != null) {
                 notificationManager.createNotificationChannel(channel);
@@ -780,13 +1085,11 @@ public class HttpPollingService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 Log.w(TAG, "showDataNotification: POST_NOTIFICATIONS permission NOT granted. Cannot show.");
-                // Optionally send a broadcast to MainActivity to request permission if it's not active
                 return;
             }
         }
         Intent intent = new Intent(this, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        // Unique request code for PendingIntent to ensure it's new/updated if message changes
         PendingIntent pendingIntent = PendingIntent.getActivity(this, MESSAGE_NOTIFICATION_ID, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID_MESSAGES)
@@ -794,7 +1097,7 @@ public class HttpPollingService extends Service {
             .setContentTitle(title).setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)
             .setContentIntent(pendingIntent)
-            .setDefaults(Notification.DEFAULT_ALL); // Uses default sound, vibrate, light
+            .setDefaults(Notification.DEFAULT_ALL); 
         
         NotificationManagerCompat.from(this).notify(MESSAGE_NOTIFICATION_ID, builder.build());
         Log.d(TAG, "showDataNotification: Sent. Title='" + title + "'");
@@ -845,18 +1148,25 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import android.Manifest;
+import android.app.Activity; // Added
+import android.app.NotificationChannel; // Added
+import android.app.NotificationManager; // Added
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.database.Cursor; // Added
+import android.media.AudioAttributes; // Added
+import android.media.MediaPlayer; // Added
 import android.net.Uri;
 import android.net.nsd.NsdServiceInfo;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.OpenableColumns; // Added
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
@@ -875,16 +1185,15 @@ import com.google.android.material.textfield.TextInputLayout;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File; // Already here for saveLog
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-// import java.util.HashMap; // No longer using app_config map for these settings
 import java.util.List;
 import java.util.Locale;
-// import java.util.Map; // No longer using app_config map
 import java.util.Objects;
 
 public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelperListener, DiscoveredServicesAdapter.OnServiceClickListener {
@@ -892,15 +1201,20 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     private static final String TAG = "MainActivity_DEBUG";
     private static final String ESP_HTTP_SERVICE_TYPE = "_http._tcp";
     private static final String ESP_SERVICE_NAME_FILTER = "mrcoopersesp";
-    private static final int ESP_DEFAULT_HTTP_PORT = 80;
+    // private static final int ESP_DEFAULT_HTTP_PORT = 80; // Not directly used here
     private static final long NSD_DISCOVERY_TIMEOUT_MS = 15000;
 
     // SharedPreferences keys
     private static final String PREFS_NAME = "MrCooperESP_Prefs";
     private static final String PREF_TRIGGER_DISTANCE = "trigger_distance_cm";
     private static final String PREF_NOTIFICATIONS_ENABLED = "notifications_enabled";
+    // New SharedPreferences keys for custom sound
+    private static final String PREF_CUSTOM_ALERT_SOUND_URI = "custom_alert_sound_uri";
+    private static final String PREF_CUSTOM_ALERT_SOUND_ENABLED = "custom_alert_sound_enabled";
+
     private static final int DEFAULT_TRIGGER_DISTANCE = 50; // cm
     private static final boolean DEFAULT_NOTIFICATIONS_ENABLED = false;
+    private static final boolean DEFAULT_CUSTOM_SOUND_ENABLED = true;
 
 
     private TextInputLayout textInputLayoutEspAddress;
@@ -909,29 +1223,40 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     private TextView textViewStatus, textViewLastMessage, textViewDiscoveredServicesTitle;
     private RecyclerView recyclerViewDiscoveredServices;
     private DiscoveredServicesAdapter discoveredServicesAdapter;
-    private List<DiscoveredService> discoveredServiceList = new ArrayList<>();
+    // private List<DiscoveredService> discoveredServiceList = new ArrayList<>(); // Not used directly
 
     private NsdHelper nsdHelper;
     private StringBuilder statusLog = new StringBuilder();
     private StringBuilder messageLog = new StringBuilder();
     private ActivityResultLauncher<String> createFileLauncher;
+    private ActivityResultLauncher<Intent> selectCustomSoundLauncher; // New
+    private ActivityResultLauncher<String> requestStoragePermissionLauncher; // New
 
     private boolean isServiceReceiverRegistered = false;
     private Handler discoveryTimeoutHandler = new Handler(Looper.getMainLooper());
 
     private boolean isHttpServicePolling = false;
 
-    // New UI Elements
+    // UI Elements for original features
     private SeekBar seekBarTriggerDistance;
     private TextView textViewTriggerDistanceValue;
     private SwitchMaterial switchEnableNotifications;
 
+    // New UI Elements for Custom Sound Alert
+    private Button buttonSelectCustomSound;
+    private TextView textViewSelectedCustomSound;
+    private Button buttonTestCustomSound;
+    private SwitchMaterial switchEnableCustomSound;
+    private Uri currentCustomSoundUri = null;
+    private MediaPlayer localTestMediaPlayer;
+
+
     private SharedPreferences sharedPreferences;
 
 
-    private final ActivityResultLauncher<String> requestPermissionLauncher =
+    private final ActivityResultLauncher<String> requestPostNotificationPermissionLauncher =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), isGranted -> {
-                Log.d(TAG, "Notification permission granted: " + isGranted);
+                Log.d(TAG, "POST_NOTIFICATIONS permission granted: " + isGranted);
                 if (isGranted) {
                     Toast.makeText(this, "Notifications permission granted.", Toast.LENGTH_SHORT).show();
                 } else {
@@ -968,7 +1293,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
                 String logEntry = timestamp + " HTTP_Data_RCV ("+dataType+"): " +
                                   (jsonData != null ? jsonData.substring(0, Math.min(jsonData.length(), 100)) + "..." : "null") + "\n";
                 messageLog.append(logEntry);
-                statusLog.append(logEntry);
+                statusLog.append(logEntry); // Also add to general status log
 
                 Log.i(TAG, "serviceUpdateReceiver << HTTP_Data (" + dataType + "): " + jsonData);
 
@@ -982,9 +1307,6 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
                         else if (distanceVal == -3.0) distDisplay = "Invalid JSON from ESP";
                         else distDisplay = String.format(Locale.getDefault(), "%.2f cm", distanceVal);
                         textViewLastMessage.setText("Last Dist: " + distDisplay);
-
-                        // Notification logic is now primarily in HttpPollingService
-                        // It will use SharedPreferences for trigger distance and enabled status
 
                     } catch (JSONException e) {
                         Log.e(TAG, "Error parsing distance JSON in MainActivity: " + e.getMessage());
@@ -1004,6 +1326,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
 
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
+        // Existing UI elements
         textInputLayoutEspAddress = findViewById(R.id.textInputLayoutEspAddress);
         editTextEspAddress = findViewById(R.id.editTextEspAddress);
         buttonStartStopPolling = findViewById(R.id.buttonConnectManual);
@@ -1014,24 +1337,30 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         textViewLastMessage = findViewById(R.id.textViewLastMessage);
         textViewDiscoveredServicesTitle = findViewById(R.id.textViewDiscoveredServicesTitle);
         recyclerViewDiscoveredServices = findViewById(R.id.recyclerViewDiscoveredServices);
-
-        // New UI Elements
         seekBarTriggerDistance = findViewById(R.id.seekBarTriggerDistance);
         textViewTriggerDistanceValue = findViewById(R.id.textViewTriggerDistanceValue);
         switchEnableNotifications = findViewById(R.id.switchEnableNotifications);
 
-        // Auto-fill ESP address
+        // New UI Elements for Custom Sound Alert
+        buttonSelectCustomSound = findViewById(R.id.buttonSelectCustomSound);
+        textViewSelectedCustomSound = findViewById(R.id.textViewSelectedCustomSound);
+        buttonTestCustomSound = findViewById(R.id.buttonTestCustomSound);
+        switchEnableCustomSound = findViewById(R.id.switchEnableCustomSound);
+
         editTextEspAddress.setText("mrcoopersesp.local");
 
-
         setupRecyclerView();
-        askNotificationPermission();
-        loadSettings(); // Load saved settings for slider and switch
-        setupNewUIListeners(); // Setup listeners for new UI elements
+        askNotificationPermission(); // For existing notifications + new foreground service
+        createCustomAlertSoundNotificationChannel(); // For AlertSoundService
+
+        loadSettings(); // Load saved settings for slider and switches
+        setupOriginalUIListeners();
+        setupCustomSoundUIListeners(); // Setup listeners for new custom sound UI
 
         Log.d(TAG, "onCreate: Initializing NsdHelper");
         nsdHelper = new NsdHelper(this, this);
 
+        // Launcher for saving log file
         createFileLauncher = registerForActivityResult(new ActivityResultContracts.CreateDocument("text/plain"), uri -> {
             if (uri != null) {
                 Log.d(TAG, "createFileLauncher: URI received for saving log: " + uri.getPath());
@@ -1042,6 +1371,45 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             }
         });
 
+        // Launcher for selecting custom sound file
+        selectCustomSoundLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    Uri uri = result.getData().getData();
+                    if (uri != null) {
+                        // Persist read permission for the URI
+                        try {
+                            final int takeFlags = result.getData().getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+                            getContentResolver().takePersistableUriPermission(uri, takeFlags);
+                            currentCustomSoundUri = uri;
+                            saveCustomSoundUri(currentCustomSoundUri);
+                            updateCustomSoundUI();
+                            Toast.makeText(this, getString(R.string.custom_sound_selected_toast, getFileNameFromUri(currentCustomSoundUri)), Toast.LENGTH_SHORT).show();
+                        } catch (SecurityException e) {
+                            Log.e(TAG, "Failed to take persistable URI permission for custom sound", e);
+                            Toast.makeText(this, "Failed to get permanent access to sound file.", Toast.LENGTH_LONG).show();
+                            currentCustomSoundUri = null;
+                            saveCustomSoundUri(null); // Clear if permission failed
+                            updateCustomSoundUI();
+                        }
+                    }
+                }
+            });
+
+        // Launcher for requesting storage permission
+        requestStoragePermissionLauncher = registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(),
+            isGranted -> {
+                if (isGranted) {
+                    Log.d(TAG, "Storage permission granted for custom sound selection.");
+                    openCustomSoundPicker();
+                } else {
+                    Toast.makeText(this, R.string.storage_permission_required_toast, Toast.LENGTH_LONG).show();
+                }
+            });
+
+
         editTextEspAddress.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
@@ -1051,6 +1419,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             }
         });
 
+        // Listeners for original buttons
         buttonStartStopPolling.setOnClickListener(v -> {
             Log.d(TAG, "buttonStartStopPolling (Service): Clicked");
             String address = Objects.requireNonNull(editTextEspAddress.getText()).toString().trim();
@@ -1058,31 +1427,26 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
                 Toast.makeText(this, "Please enter ESP32 address.", Toast.LENGTH_SHORT).show();
                 return;
             }
-
-            String baseUrl = address;
-            if (!baseUrl.matches("^[a-zA-Z]+://.*")) {
+            String baseUrl = address; // Assume it includes http:// or can be parsed
+            if (!baseUrl.matches("^[a-zA-Z]+://.*")) { // Simple check if schema is missing
                 baseUrl = "http://" + baseUrl;
             }
             try {
                 new java.net.URL(baseUrl); // Validate URL format
             } catch (java.net.MalformedURLException e) {
-                Toast.makeText(this, "Invalid address format: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                return;
+                 Toast.makeText(this, "Invalid address format: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                 return;
             }
 
             if (!isHttpServicePolling) {
                 Intent startServiceIntent = new Intent(this, HttpPollingService.class);
                 startServiceIntent.setAction(HttpPollingService.ACTION_START_FOREGROUND_SERVICE);
                 startServiceIntent.putExtra(HttpPollingService.EXTRA_BASE_URL, baseUrl);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(startServiceIntent);
-                } else {
-                    startService(startServiceIntent);
-                }
+                ContextCompat.startForegroundService(this, startServiceIntent);
             } else {
                 Intent stopPollingIntent = new Intent(this, HttpPollingService.class);
                 stopPollingIntent.setAction(HttpPollingService.ACTION_STOP_POLLING);
-                startService(stopPollingIntent);
+                startService(stopPollingIntent); // No need for foreground context here
             }
         });
 
@@ -1108,13 +1472,36 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     }
 
     private void loadSettings() {
+        // Original settings
         int triggerDistance = sharedPreferences.getInt(PREF_TRIGGER_DISTANCE, DEFAULT_TRIGGER_DISTANCE);
         boolean notificationsEnabled = sharedPreferences.getBoolean(PREF_NOTIFICATIONS_ENABLED, DEFAULT_NOTIFICATIONS_ENABLED);
-
         seekBarTriggerDistance.setProgress(triggerDistance);
         textViewTriggerDistanceValue.setText(String.format(Locale.getDefault(), "%d cm", triggerDistance));
         switchEnableNotifications.setChecked(notificationsEnabled);
         Log.d(TAG, "loadSettings: TriggerDist=" + triggerDistance + "cm, NotificationsEnabled=" + notificationsEnabled);
+
+        // Custom sound settings
+        String soundUriString = sharedPreferences.getString(PREF_CUSTOM_ALERT_SOUND_URI, null);
+        if (soundUriString != null) {
+            currentCustomSoundUri = Uri.parse(soundUriString);
+            // Verify access to persistable URI
+            try {
+                getContentResolver().takePersistableUriPermission(currentCustomSoundUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                // Or check by trying to open an input stream briefly if not using takePersistable again
+                // getContentResolver().openInputStream(currentCustomSoundUri).close();
+            } catch (SecurityException e) {
+                Log.w(TAG, "loadSettings: Lost permission for custom sound URI: " + currentCustomSoundUri, e);
+                Toast.makeText(this, R.string.custom_sound_no_longer_accessible_toast, Toast.LENGTH_LONG).show();
+                currentCustomSoundUri = null;
+                saveCustomSoundUri(null); // Clear from prefs if no longer accessible
+            }
+        } else {
+            currentCustomSoundUri = null;
+        }
+        boolean customSoundIsEnabled = sharedPreferences.getBoolean(PREF_CUSTOM_ALERT_SOUND_ENABLED, currentCustomSoundUri != null); // Default to true if URI is set
+        switchEnableCustomSound.setChecked(customSoundIsEnabled);
+        updateCustomSoundUI();
+        Log.d(TAG, "loadSettings: CustomSoundURI=" + (currentCustomSoundUri != null) + ", CustomSoundEnabled=" + customSoundIsEnabled);
     }
 
     private void saveTriggerDistance(int distance) {
@@ -1127,19 +1514,33 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         Log.d(TAG, "saveNotificationsEnabled: Saved " + enabled);
     }
 
+    private void saveCustomSoundUri(Uri uri) {
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        if (uri != null) {
+            editor.putString(PREF_CUSTOM_ALERT_SOUND_URI, uri.toString());
+        } else {
+            editor.remove(PREF_CUSTOM_ALERT_SOUND_URI);
+        }
+        editor.apply();
+        Log.d(TAG, "saveCustomSoundUri: Saved " + (uri != null ? uri.toString() : "null"));
+    }
 
-    private void setupNewUIListeners() {
+    private void saveCustomSoundEnabled(boolean enabled) {
+        sharedPreferences.edit().putBoolean(PREF_CUSTOM_ALERT_SOUND_ENABLED, enabled).apply();
+        Log.d(TAG, "saveCustomSoundEnabled: Saved " + enabled);
+    }
+
+    private void setupOriginalUIListeners() {
         seekBarTriggerDistance.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 textViewTriggerDistanceValue.setText(String.format(Locale.getDefault(), "%d cm", progress));
-                 if (fromUser) { // Save only if changed by user to avoid saving during initial load
+                 if (fromUser) {
                     saveTriggerDistance(progress);
                 }
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {
-                // final save, in case onProgressChanged didn't catch the last user interaction for some reason
                  saveTriggerDistance(seekBar.getProgress());
             }
         });
@@ -1147,6 +1548,141 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         switchEnableNotifications.setOnCheckedChangeListener((buttonView, isChecked) -> {
             saveNotificationsEnabled(isChecked);
         });
+    }
+
+    private void setupCustomSoundUIListeners() {
+        buttonSelectCustomSound.setOnClickListener(v -> checkStoragePermissionAndOpenPicker());
+        buttonTestCustomSound.setOnClickListener(v -> {
+            if (currentCustomSoundUri != null) {
+                playLocalTestSound(currentCustomSoundUri);
+            } else {
+                Toast.makeText(this, R.string.no_custom_sound_selected, Toast.LENGTH_SHORT).show();
+            }
+        });
+        switchEnableCustomSound.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            saveCustomSoundEnabled(isChecked);
+        });
+    }
+
+    private void checkStoragePermissionAndOpenPicker() {
+        String permission;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permission = Manifest.permission.READ_MEDIA_AUDIO;
+        } else {
+            permission = Manifest.permission.READ_EXTERNAL_STORAGE;
+        }
+
+        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
+            openCustomSoundPicker();
+        } else {
+            requestStoragePermissionLauncher.launch(permission);
+        }
+    }
+
+    private void openCustomSoundPicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("audio/*");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        selectCustomSoundLauncher.launch(intent);
+    }
+
+    private void updateCustomSoundUI() {
+        if (currentCustomSoundUri != null) {
+            textViewSelectedCustomSound.setText(getString(R.string.custom_sound_selected_label, getFileNameFromUri(currentCustomSoundUri)));
+            buttonTestCustomSound.setEnabled(true);
+            switchEnableCustomSound.setEnabled(true);
+        } else {
+            textViewSelectedCustomSound.setText(R.string.no_custom_sound_selected);
+            buttonTestCustomSound.setEnabled(false);
+            switchEnableCustomSound.setEnabled(false);
+            switchEnableCustomSound.setChecked(false); // If no sound, disable the switch itself
+            saveCustomSoundEnabled(false); // And save this state
+        }
+    }
+
+    private String getFileNameFromUri(Uri uri) {
+        if (uri == null) return "None";
+        String result = null;
+        if ("content".equals(uri.getScheme())) {
+            try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int displayNameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (displayNameIndex != -1) {
+                        result = cursor.getString(displayNameIndex);
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting file name from content URI", e);
+            }
+        }
+        if (result == null) {
+            result = uri.getPath();
+            if (result != null) {
+                int cut = result.lastIndexOf('/');
+                if (cut != -1) {
+                    result = result.substring(cut + 1);
+                }
+            } else {
+                result = uri.toString(); // Fallback
+            }
+        }
+        return result;
+    }
+
+    private void playLocalTestSound(Uri soundUri) {
+        if (localTestMediaPlayer != null) {
+            localTestMediaPlayer.release();
+        }
+        localTestMediaPlayer = new MediaPlayer();
+        localTestMediaPlayer.setAudioAttributes(
+                new AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .setUsage(AudioAttributes.USAGE_MEDIA) // For local test, MEDIA is fine
+                        .build());
+        try {
+            localTestMediaPlayer.setDataSource(this, soundUri);
+            localTestMediaPlayer.prepareAsync();
+            localTestMediaPlayer.setOnPreparedListener(mp -> {
+                mp.start();
+                Toast.makeText(this, R.string.custom_sound_playing_test, Toast.LENGTH_SHORT).show();
+            });
+            localTestMediaPlayer.setOnCompletionListener(mp -> {
+                Toast.makeText(this, R.string.custom_sound_test_finished, Toast.LENGTH_SHORT).show();
+                mp.release();
+                localTestMediaPlayer = null;
+            });
+            localTestMediaPlayer.setOnErrorListener((mp, what, extra) -> {
+                Log.e(TAG, "Local MediaPlayer error: " + what + ", " + extra);
+                Toast.makeText(this, R.string.custom_sound_error_playing, Toast.LENGTH_SHORT).show();
+                mp.release();
+                localTestMediaPlayer = null;
+                return true;
+            });
+        } catch (IOException e) {
+            Log.e(TAG, "Error setting data source for local MediaPlayer", e);
+            Toast.makeText(this, R.string.custom_sound_error_preparing, Toast.LENGTH_SHORT).show();
+             if (localTestMediaPlayer != null) {
+                localTestMediaPlayer.release();
+                localTestMediaPlayer = null;
+            }
+        }
+    }
+
+    private void createCustomAlertSoundNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    AlertSoundService.CUSTOM_ALERT_SOUND_CHANNEL_ID,
+                    getString(R.string.alert_sound_service_channel_name),
+                    NotificationManager.IMPORTANCE_LOW
+            );
+            channel.setDescription(getString(R.string.alert_sound_service_channel_description));
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+                Log.d(TAG, "Custom Alert Sound Notification Channel created.");
+            }
+        }
     }
 
 
@@ -1204,22 +1740,28 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         buttonStartStopDiscovery.setText("Scan Network for ESP32");
         buttonStartStopDiscovery.setEnabled(true);
 
-        // Initial state for new controls (already handled by loadSettings)
+        updateCustomSoundUI(); // Ensure custom sound UI is also in initial state
     }
 
     private void updateUIForHttpPollingState(boolean isPolling, String statusTextFromService) {
         Log.d(TAG, "updateUIForHttpPollingState: isPolling=" + isPolling + ", statusText=" + statusTextFromService);
-        textViewStatus.setText(statusTextFromService);
+        textViewStatus.setText(statusTextFromService); // Use actual status from service
         String currentAddress = editTextEspAddress.getText() != null ? editTextEspAddress.getText().toString().trim() : "";
         boolean inputPresent = !TextUtils.isEmpty(currentAddress);
 
         buttonStartStopPolling.setEnabled(inputPresent);
         if (isPolling) {
-            buttonStartStopPolling.setText("Stop Polling (Service)");
+            buttonStartStopPolling.setText("Stop Polling (Service)"); // Or "Pause Polling"
             buttonStopService.setEnabled(true);
         } else {
-            buttonStartStopPolling.setText("Start Polling (Service)");
-             buttonStopService.setEnabled(isServiceReceiverRegistered && !statusTextFromService.toLowerCase().contains("service stopped") && !statusTextFromService.toLowerCase().contains("error"));
+            // Logic for when service is stopped vs polling paused
+            if(statusTextFromService != null && statusTextFromService.toLowerCase().contains("service stopped")){
+                buttonStartStopPolling.setText("Start Polling (Service)");
+                buttonStopService.setEnabled(false); // Service fully stopped
+            } else { // Polling paused or service still running but not polling
+                buttonStartStopPolling.setText("Start Polling (Service)");
+                buttonStopService.setEnabled(true); // Can still fully stop the service
+            }
         }
         textInputLayoutEspAddress.setEnabled(!isPolling);
         editTextEspAddress.setEnabled(!isPolling);
@@ -1238,12 +1780,12 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             buttonStartStopDiscovery.setText("Stop Scan");
         } else {
             String currentStatusLower = textViewStatus.getText().toString().toLowerCase();
-            if (!isHttpServicePolling && !currentStatusLower.contains("polling")) {
+            if (!isHttpServicePolling && !currentStatusLower.contains("polling")) { // Only update if not actively polling
                  textViewStatus.setText("Status: Scan stopped. " + (discoveredServicesAdapter.getItemCount() == 0 ? "No matching services found." : "Select from list or enter address."));
             }
             buttonStartStopDiscovery.setText("Scan Network for ESP32");
         }
-        buttonStartStopDiscovery.setEnabled(true);
+        buttonStartStopDiscovery.setEnabled(true); // Always re-enable after state change
     }
 
     @Override
@@ -1260,7 +1802,8 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             Log.i(TAG, "onNsdServiceResolved: Name='" + service.getServiceName() + "', Host='" + service.getHostAddress() + ":" + service.getPort() + "', Type='" + service.getType() + "'");
             statusLog.append(getCurrentTimestamp()).append(" NSD_Resolved: '").append(service.getServiceName()).append("' at ").append(service.getHostAddress()).append(":").append(service.getPort()).append(" Type: '").append(service.getType()).append("'\n");
 
-            if (ESP_HTTP_SERVICE_TYPE.startsWith(service.getType().replaceFirst("\\.$", ""))) {
+            // Ensure we are adding the correct service type (_http._tcp)
+            if (service.getType() != null && ESP_HTTP_SERVICE_TYPE.startsWith(service.getType().replaceFirst("\\.$", ""))) {
                 Log.d(TAG, "onNsdServiceResolved: Adding HTTP service to adapter: " + service.getServiceName());
                 discoveredServicesAdapter.addService(service);
                 if (recyclerViewDiscoveredServices.getVisibility() == View.GONE && discoveredServicesAdapter.getItemCount() > 0) {
@@ -1278,14 +1821,9 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         runOnUiThread(() -> {
             Log.w(TAG, "onNsdServiceLost: Name='" + service.getServiceName() + "', Type='" + service.getType() + "'");
             statusLog.append(getCurrentTimestamp()).append(" NSD_Lost: '").append(service.getServiceName()).append("' Type: '").append(service.getType()).append("'\n");
-            // This requires a removeService method in adapter or managing the list here and calling setServices
-            // For simplicity, if adapter internal list 'discoveredServices' is modified:
-            // discoveredServicesAdapter.removeService(service); // You'd need to implement this in DiscoveredServicesAdapter
-            // Or rebuild if you manage the list directly in MainActivity
-            // discoveredServiceList.remove(service);
-            // discoveredServicesAdapter.setServices(new ArrayList<>(discoveredServiceList));
+            // discoveredServicesAdapter.removeService(service); // Implement if needed
              Toast.makeText(this, "Lost service: " + service.getServiceName(), Toast.LENGTH_SHORT).show();
-             if (discoveredServicesAdapter.getItemCount() == 0) { // Re-check after potential removal
+             if (discoveredServicesAdapter.getItemCount() == 0) {
                 textViewDiscoveredServicesTitle.setVisibility(View.GONE);
                 recyclerViewDiscoveredServices.setVisibility(View.GONE);
             }
@@ -1328,13 +1866,12 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         Log.i(TAG, "onServiceClick: Service='" + service.getServiceName() + "', Host='" + service.getHostAddress() + "', Port=" + service.getPort());
         if (service.isValid()) {
             String addressToUse = service.getHostAddress();
-            // Port is usually 80 for HTTP, mDNS can specify others but our service will form http://host
-            // If your ESP HTTP server is on a non-standard port found by NSD, you might need to append it:
-            // if (service.getPort() != ESP_DEFAULT_HTTP_PORT && service.getPort() > 0) {
+            // If port is not 80 and valid, append it. Otherwise, HttpPollingService assumes port 80 for http://
+            // if (service.getPort() > 0 && service.getPort() != 80) {
             //    addressToUse += ":" + service.getPort();
             // }
             editTextEspAddress.setText(addressToUse);
-            Toast.makeText(this, "'" +service.getServiceName() + "' (" + service.getHostAddress() + ") selected. Tap 'Start Polling'.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "'" +service.getServiceName() + "' (" + service.getHostAddress() + ") selected. Tap 'Connect'.", Toast.LENGTH_SHORT).show();
             statusLog.append(getCurrentTimestamp()).append(" UI_Action: Clicked discovered service '").append(service.getServiceName()).append("'\n");
             if (nsdHelper.isDiscoveryActive()) {
                 Log.d(TAG, "onServiceClick: Stopping discovery after service selection.");
@@ -1376,7 +1913,7 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
                     PackageManager.PERMISSION_GRANTED) {
                 Log.i(TAG, "askNotificationPermission: Requesting POST_NOTIFICATIONS permission.");
-                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+                requestPostNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
             } else {
                 Log.d(TAG, "askNotificationPermission: POST_NOTIFICATIONS permission already granted.");
             }
@@ -1410,6 +1947,9 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         Log.d(TAG, "onResume: Activity Resumed. isHttpServicePolling=" + isHttpServicePolling);
         registerServiceReceiver();
         loadSettings(); // Ensure UI reflects current settings on resume
+        // textViewStatus can be stale if service stopped while activity was paused.
+        // Consider querying service state or rely on service sending an update if it's running.
+        // For now, updateUIForHttpPollingState will use the current textViewStatus text if no fresh update received.
         updateUIForHttpPollingState(isHttpServicePolling, textViewStatus.getText().toString());
     }
 
@@ -1417,6 +1957,9 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
     protected void onPause() {
         super.onPause();
         Log.d(TAG, "onPause: Activity Paused.");
+        // Do NOT unregister receiver here if we want updates while paused (e.g. for logging)
+        // But if activity is not visible, some UI updates might not be relevant.
+        // For simplicity, keeping it registered.
     }
 
     @Override
@@ -1427,6 +1970,10 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
         if (nsdHelper.isDiscoveryActive()) {
              Log.i(TAG, "onStop: Stopping NSD discovery as activity is no longer visible.");
              nsdHelper.stopDiscovery();
+        }
+        if (localTestMediaPlayer != null) {
+            localTestMediaPlayer.release();
+            localTestMediaPlayer = null;
         }
     }
 
@@ -1439,6 +1986,10 @@ public class MainActivity extends AppCompatActivity implements NsdHelper.NsdHelp
             nsdHelper.tearDown();
         }
         discoveryTimeoutHandler.removeCallbacksAndMessages(null);
+         if (localTestMediaPlayer != null) {
+            localTestMediaPlayer.release();
+            localTestMediaPlayer = null;
+        }
     }
 }
 
@@ -1753,7 +2304,7 @@ public class NsdHelper {
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="8dp"
         app:layout_constraintTop_toBottomOf="@id/textViewAppTitle"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -1846,6 +2397,51 @@ public class NsdHelper {
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
+    <!-- Custom Sound Alert UI Elements -->
+    <Button
+        android:id="@+id/buttonSelectCustomSound"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/select_custom_alert_sound"
+        android:layout_marginTop="12dp"
+        app:layout_constraintTop_toBottomOf="@id/switchEnableNotifications"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
+        android:id="@+id/textViewSelectedCustomSound"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/no_custom_sound_selected"
+        android:gravity="center_horizontal"
+        android:layout_marginTop="4dp"
+        app:layout_constraintTop_toBottomOf="@id/buttonSelectCustomSound"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <Button
+        android:id="@+id/buttonTestCustomSound"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/test_custom_alert_sound"
+        android:enabled="false"
+        android:layout_marginTop="4dp"
+        app:layout_constraintTop_toBottomOf="@id/textViewSelectedCustomSound"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <com.google.android.material.switchmaterial.SwitchMaterial
+        android:id="@+id/switchEnableCustomSound"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/enable_custom_alert_sound_switch"
+        android:enabled="false"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/buttonTestCustomSound"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+    <!-- End Custom Sound Alert UI Elements -->
+
 
     <TextView
         android:id="@+id/textViewDiscoveredServicesTitle"
@@ -1856,7 +2452,7 @@ public class NsdHelper {
         android:textSize="16sp"
         android:textStyle="italic"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/switchEnableNotifications"
+        app:layout_constraintTop_toBottomOf="@id/switchEnableCustomSound"
         app:layout_constraintStart_toStartOf="parent"/>
 
     <androidx.recyclerview.widget.RecyclerView
@@ -1869,7 +2465,8 @@ public class NsdHelper {
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@+id/guidelineLogArea"
-        app:layout_constraintHeight_max="150dp"
+        app:layout_constraintHeight_max="120dp"
+        app:layout_constraintHeight_default="wrap"
         app:layout_constraintVertical_bias="0.0"
         tools:listitem="@layout/list_item_discovered_service"
         tools:itemCount="2"/>
@@ -1976,6 +2573,28 @@ public class NsdHelper {
     <!-- For New HTTP Notification Channel -->
     <string name="channel_name_http">ESP32 HTTP Data</string>
     <string name="channel_description_http">Notifications for data polled from ESP32 via HTTP.</string>
+
+    <!-- For Custom Alert Sound Feature -->
+    <string name="select_custom_alert_sound">Select Custom Alert Sound</string>
+    <string name="test_custom_alert_sound">Test Custom Alert</string>
+    <string name="enable_custom_alert_sound_switch">Enable Custom Alert Sound</string>
+    <string name="no_custom_sound_selected">No custom alert sound selected.</string>
+    <string name="custom_sound_selected_label">Custom Alert: %s</string>
+    <string name="custom_sound_playing_test">Playing custom alert test...</string>
+    <string name="custom_sound_test_finished">Custom alert test finished.</string>
+    <string name="custom_sound_error_playing">Error playing custom sound.</string>
+    <string name="custom_sound_error_preparing">Error preparing custom sound.</string>
+    <string name="custom_sound_selected_toast">Custom alert sound selected: %s</string>
+    <string name="custom_sound_cleared_toast">Custom alert sound cleared.</string>
+    <string name="custom_sound_no_longer_accessible_toast">Previously selected custom sound is no longer accessible. Please select again.</string>
+    <string name="storage_permission_required_toast">Storage permission is required to select a sound file.</string>
+    <string name="alert_sound_service_channel_name">Custom Alert Sound Service</string>
+    <string name="alert_sound_service_channel_description">Plays custom alert sounds in the background.</string>
+    <string name="alert_sound_notification_title">Playing Alert</string>
+    <string name="alert_sound_notification_text">Custom alert sound is playing.</string>
+    <string name="log_sensor_trigger_file_name">esp32_sensor_triggers.log</string>
+
+
 </resources>
 
 #################### START OF FILE: app\src\main\res\values\themes.xml ####################
