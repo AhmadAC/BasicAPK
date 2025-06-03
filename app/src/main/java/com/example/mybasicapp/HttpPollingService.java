@@ -10,23 +10,32 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
+import android.net.Uri; // Added
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.OpenableColumns; // Added
 import android.util.Log;
+import android.database.Cursor; // Added
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat; // Added
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File; // Added
+import java.io.FileOutputStream; // Added
 import java.io.IOException;
+import java.io.OutputStreamWriter; // Added
+import java.text.SimpleDateFormat; // Added
+import java.util.Date; // Added
 import java.util.Locale;
 // import java.util.Objects; // Not strictly needed here anymore
 import java.util.concurrent.TimeUnit;
@@ -70,9 +79,17 @@ public class HttpPollingService extends Service {
     private static final String PREFS_NAME = "MrCooperESP_Prefs";
     private static final String PREF_TRIGGER_DISTANCE = "trigger_distance_cm";
     private static final String PREF_NOTIFICATIONS_ENABLED = "notifications_enabled";
+    // New keys for custom sound
+    private static final String PREF_CUSTOM_ALERT_SOUND_URI = "custom_alert_sound_uri";
+    private static final String PREF_CUSTOM_ALERT_SOUND_ENABLED = "custom_alert_sound_enabled";
+
     private static final int DEFAULT_TRIGGER_DISTANCE = 50; // cm
     private static final boolean DEFAULT_NOTIFICATIONS_ENABLED = false;
+    private static final boolean DEFAULT_CUSTOM_SOUND_ENABLED = true; // Default to true if a sound is selected
     private SharedPreferences sharedPreferences;
+
+    // For logging sensor triggers
+    private static final String SENSOR_TRIGGER_LOG_FILE_NAME_KEY = "log_sensor_trigger_file_name";
 
 
     @Override
@@ -230,20 +247,44 @@ public class HttpPollingService extends Service {
                             JSONObject json = new JSONObject(responseBodyString);
                             double distanceValCm = json.optDouble("distance_cm", -3.0);
 
-                            // Check for notification trigger
                             boolean notificationsEnabled = sharedPreferences.getBoolean(PREF_NOTIFICATIONS_ENABLED, DEFAULT_NOTIFICATIONS_ENABLED);
                             int triggerDistanceCm = sharedPreferences.getInt(PREF_TRIGGER_DISTANCE, DEFAULT_TRIGGER_DISTANCE);
+                            boolean customSoundEnabled = sharedPreferences.getBoolean(PREF_CUSTOM_ALERT_SOUND_ENABLED, DEFAULT_CUSTOM_SOUND_ENABLED);
+                            String customSoundUriString = sharedPreferences.getString(PREF_CUSTOM_ALERT_SOUND_URI, null);
 
-                            Log.d(TAG, "Notification check: Enabled=" + notificationsEnabled +
+                            Log.d(TAG, "Notification check: NotificationsEnabled=" + notificationsEnabled +
                                        ", TriggerDist=" + triggerDistanceCm + "cm" +
-                                       ", CurrentDist=" + distanceValCm + "cm");
+                                       ", CurrentDist=" + distanceValCm + "cm" +
+                                       ", CustomSoundEnabled=" + customSoundEnabled +
+                                       ", CustomSoundURI=" + (customSoundUriString != null));
 
                             if (notificationsEnabled && distanceValCm >= 0 && distanceValCm <= triggerDistanceCm) {
                                 String notificationMsg = String.format(Locale.getDefault(),
                                         "Object detected at %.1f cm (Trigger: <= %d cm)",
                                         distanceValCm, triggerDistanceCm);
-                                showDataNotification("Motion Alert", notificationMsg);
-                                Log.i(TAG, "Notification triggered: " + notificationMsg);
+                                showDataNotification("Motion Alert", notificationMsg); // Visual notification
+
+                                String customSoundFileName = "None";
+                                if (customSoundUriString != null) {
+                                    customSoundFileName = getFileNameFromContentUri(Uri.parse(customSoundUriString));
+                                }
+
+                                // Log the sensor trigger event
+                                logSensorTriggerToFile(String.format(Locale.getDefault(),
+                                        "Sensor triggered. Distance: %.1f cm (Threshold: <= %d cm). Visual notification shown. Custom sound: %s (Enabled: %b, URI Set: %b)",
+                                        distanceValCm, triggerDistanceCm, customSoundFileName, customSoundEnabled, (customSoundUriString != null)));
+
+                                // Play custom sound if enabled and URI is set
+                                if (customSoundEnabled && customSoundUriString != null) {
+                                    Uri soundUri = Uri.parse(customSoundUriString);
+                                    Intent alertSoundIntent = new Intent(HttpPollingService.this, AlertSoundService.class);
+                                    alertSoundIntent.setAction(AlertSoundService.ACTION_PLAY_CUSTOM_SOUND);
+                                    alertSoundIntent.putExtra(AlertSoundService.EXTRA_SOUND_URI, soundUri.toString());
+                                    // Grant read permission to the AlertSoundService for this URI
+                                    alertSoundIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                    ContextCompat.startForegroundService(HttpPollingService.this, alertSoundIntent);
+                                    Log.i(TAG, "Custom alert sound service started for: " + customSoundFileName);
+                                }
                             }
 
                         } catch (JSONException e_json) {
@@ -257,6 +298,60 @@ public class HttpPollingService extends Service {
                 }
             }
         });
+    }
+
+    private String getFileNameFromContentUri(Uri uri) {
+        String result = null;
+        if (uri == null) return "Unknown URI";
+        if ("content".equals(uri.getScheme())) {
+            try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int displayNameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (displayNameIndex != -1) {
+                        result = cursor.getString(displayNameIndex);
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting file name from content URI: " + uri, e);
+            }
+        }
+        if (result == null) {
+            result = uri.getPath();
+            if (result != null) {
+                int cut = result.lastIndexOf('/');
+                if (cut != -1) {
+                    result = result.substring(cut + 1);
+                }
+            } else {
+                result = uri.toString();
+            }
+        }
+        return result;
+    }
+
+    private void logSensorTriggerToFile(String message) {
+        File logFile = new File(getFilesDir(), getString(R.string.log_sensor_trigger_file_name));
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault());
+        String timestamp = sdf.format(new Date());
+        String logEntry = "[" + timestamp + "] " + message + "\n";
+
+        FileOutputStream fos = null;
+        OutputStreamWriter osw = null;
+        try {
+            fos = new FileOutputStream(logFile, true); // true for append mode
+            osw = new OutputStreamWriter(fos);
+            osw.write(logEntry);
+            Log.i(TAG, "Logged to sensor trigger file: " + message);
+        } catch (IOException e) {
+            Log.e(TAG, "Error writing to sensor trigger log file: " + logFile.getAbsolutePath(), e);
+        } finally {
+            try {
+                if (osw != null) osw.close();
+                else if (fos != null) fos.close();
+            } catch (IOException e) {
+                Log.e(TAG, "Error closing sensor trigger log file streams", e);
+            }
+        }
     }
 
 
@@ -350,13 +445,12 @@ public class HttpPollingService extends Service {
             NotificationChannel channel = new NotificationChannel(channelId, channelName, importance);
             if (NOTIFICATION_CHANNEL_ID_MESSAGES.equals(channelId)) {
                 channel.setDescription(getString(R.string.channel_description_http));
-                // For alert notifications, enable lights, vibration, etc.
                 channel.enableLights(true);
                 channel.enableVibration(true);
-                // channel.setLightColor(Color.RED); // Example
-            } else {
+            } else if (NOTIFICATION_CHANNEL_ID_SERVICE.equals(channelId)) {
                  channel.setDescription("Channel for ESP32 HTTP Polling Service status.");
             }
+            // AlertSoundService creates its own channel
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
             if (notificationManager != null) {
                 notificationManager.createNotificationChannel(channel);
@@ -371,13 +465,11 @@ public class HttpPollingService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 Log.w(TAG, "showDataNotification: POST_NOTIFICATIONS permission NOT granted. Cannot show.");
-                // Optionally send a broadcast to MainActivity to request permission if it's not active
                 return;
             }
         }
         Intent intent = new Intent(this, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        // Unique request code for PendingIntent to ensure it's new/updated if message changes
         PendingIntent pendingIntent = PendingIntent.getActivity(this, MESSAGE_NOTIFICATION_ID, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID_MESSAGES)
@@ -385,7 +477,7 @@ public class HttpPollingService extends Service {
             .setContentTitle(title).setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)
             .setContentIntent(pendingIntent)
-            .setDefaults(Notification.DEFAULT_ALL); // Uses default sound, vibrate, light
+            .setDefaults(Notification.DEFAULT_ALL); 
         
         NotificationManagerCompat.from(this).notify(MESSAGE_NOTIFICATION_ID, builder.build());
         Log.d(TAG, "showDataNotification: Sent. Title='" + title + "'");

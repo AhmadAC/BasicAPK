@@ -15,12 +15,18 @@
 
     <!-- Permissions for Foreground Service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Allow specific types, HttpPollingService already uses dataSync -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <!-- If targeting Android 14 (API 34) or higher and your foreground service type is dataSync,
-         you might need to explicitly declare the type again here if issues arise,
-         though usually the manifest merge handles it.
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_TYPE_DATA_SYNC" />
-    -->
+    <!-- Add mediaPlayback for AlertSoundService -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+
+    <!-- Permissions for custom sound -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- For Android 12 (API 32) and below to read audio files -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- For Android 13 (API 33) and above, for specific media types -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
 
     <application
@@ -30,7 +36,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyBasicApp"
-        tools:targetApi="31"
+        tools:targetApi="34"
         android:usesCleartextTraffic="true">
         <!-- usesCleartextTraffic="true" is important for local http:// and ws:// connections -->
 
@@ -45,11 +51,17 @@
         </activity>
 
         <service
-            android:name=".HttpPollingService" 
+            android:name=".HttpPollingService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
             <!-- foregroundServiceType is required for services targeting Android Q (API 29) and above -->
+
+        <service
+            android:name=".AlertSoundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
     </application>
 

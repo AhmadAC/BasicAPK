@@ -8,4 +8,26 @@
     <!-- For New HTTP Notification Channel -->
     <string name="channel_name_http">ESP32 HTTP Data</string>
     <string name="channel_description_http">Notifications for data polled from ESP32 via HTTP.</string>
+
+    <!-- For Custom Alert Sound Feature -->
+    <string name="select_custom_alert_sound">Select Custom Alert Sound</string>
+    <string name="test_custom_alert_sound">Test Custom Alert</string>
+    <string name="enable_custom_alert_sound_switch">Enable Custom Alert Sound</string>
+    <string name="no_custom_sound_selected">No custom alert sound selected.</string>
+    <string name="custom_sound_selected_label">Custom Alert: %s</string>
+    <string name="custom_sound_playing_test">Playing custom alert test...</string>
+    <string name="custom_sound_test_finished">Custom alert test finished.</string>
+    <string name="custom_sound_error_playing">Error playing custom sound.</string>
+    <string name="custom_sound_error_preparing">Error preparing custom sound.</string>
+    <string name="custom_sound_selected_toast">Custom alert sound selected: %s</string>
+    <string name="custom_sound_cleared_toast">Custom alert sound cleared.</string>
+    <string name="custom_sound_no_longer_accessible_toast">Previously selected custom sound is no longer accessible. Please select again.</string>
+    <string name="storage_permission_required_toast">Storage permission is required to select a sound file.</string>
+    <string name="alert_sound_service_channel_name">Custom Alert Sound Service</string>
+    <string name="alert_sound_service_channel_description">Plays custom alert sounds in the background.</string>
+    <string name="alert_sound_notification_title">Playing Alert</string>
+    <string name="alert_sound_notification_text">Custom alert sound is playing.</string>
+    <string name="log_sensor_trigger_file_name">esp32_sensor_triggers.log</string>
+
+
 </resources>
