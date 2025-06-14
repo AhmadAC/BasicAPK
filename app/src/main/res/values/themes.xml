@@ -20,10 +20,23 @@
         <!-- For example, to remove the action bar if you're using a Toolbar in your layout: -->
         <!-- <item name="windowActionBar">false</item> -->
         <!-- <item name="windowNoTitle">true</item> -->
+        <!-- We will use a Toolbar, so the default DarkActionBar is fine.
+             If you wanted no default action bar and to *only* use your Toolbar,
+             you would choose a NoActionBar theme like Theme.MaterialComponents.DayNight.NoActionBar
+             and then manually set your Toolbar as the support action bar.
+             For simplicity with the TabLayout, DarkActionBar parent is okay.
+        -->
 
         <!-- You can also define other attributes like windowBackground, textColor, etc. -->
         <!-- <item name="android:windowBackground">@color/white</item> -->
     </style>
+
+    <!-- Theme for the AppBarLayout and Toolbar -->
+    <style name="Theme.MyBasicApp.AppBarOverlay" parent="ThemeOverlay.AppCompat.Dark.ActionBar" />
+
+    <!-- Theme for popup menus, spinners, etc., related to the Toolbar -->
+    <style name="Theme.MyBasicApp.PopupOverlay" parent="ThemeOverlay.AppCompat.Light" />
+
 
     <!-- Optional: A theme for a splash screen if you implement one -->
     <!--

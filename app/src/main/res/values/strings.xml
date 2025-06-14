@@ -1,21 +1,155 @@
 <resources>
     <string name="app_name">Mr Coopers ESP32</string>
 
-    <!-- For Original Notification Channel (can be repurposed or kept if distinct features) -->
-    <string name="channel_name">ESP32 Notifications</string>
-    <string name="channel_description">Notifications received from the local ESP32 device.</string>
+    <!-- General UI & Button Labels -->
+    <string name="save_button_label">Save</string>
+    <string name="cancel_button_label">Cancel</string>
+    <string name="refresh_button_label">Refresh</string>
+    <string name="add_button_label">Add</string>
+    <string name="status_fetching_ellipsis">Fetching…</string>
+    <string name="status_not_available_no_esp">N/A (No active ESP)</string>
+    <string name="select_active_esp_prompt">Select an active ESP from the Devices tab.</string>
+    <string name="no_active_esp_for_action">No active ESP selected for this action.</string>
+    <string name="operation_in_progress">Another operation is already in progress. Please wait.</string>
+    <string name="status_error_generic">Error</string>
+    <string name="status_success_generic">Success</string>
+    <string name="status_loading">Loading…</string>
+    <string name="status_idle">Idle</string>
+    <string name="decibel_format">%d dB</string>
+    <string name="decibel_format_precise">%.1f dB</string>
 
-    <!-- For New HTTP Notification Channel -->
-    <string name="channel_name_http">ESP32 HTTP Data</string>
-    <string name="channel_description_http">Notifications for data polled from ESP32 via HTTP.</string>
 
-    <!-- For Custom Alert Sound Feature -->
+    <!-- MainActivity & Global -->
+    <string name="save_activity_log_button">Save Activity Log</string>
+    <!-- Tab Titles for ViewPager -->
+    <string name="tab_title_home">Home</string>
+    <string name="tab_title_noise_config">Noise ESP</string>
+    <string name="tab_title_esp_system_config">ESP System</string>
+    <string name="tab_title_devices">Devices</string>
+
+    <!-- HomeFragment Strings -->
+    <string name="home_status_no_active_esp">Home (No Active ESP)</string>
+    <string name="home_status_active_esp">Home (Active: %s)</string>
+    <string name="home_status_polling">Home (Polling: %s)</string>
+    <string name="home_status_paused">Home (Paused: %s)</string>
+    <string name="mic_data_no_active_esp">Mic Data: No active ESP selected.</string>
+    <string name="mic_data_waiting">Mic Data: Waiting for ESP data…</string>
+    <string name="mic_data_parse_error">Mic Data: Error parsing data from ESP.</string>
+    <string name="mic_data_esp_error">Mic Data (ESP Error): %s</string>
+    <string name="mic_data_invalid_default">Mic Data: Invalid or no data from ESP.</string>
+    <string name="mic_data_format">Level: %.1f dB (RMS: %.0f) ESP_Sts: %s</string>
+    <string name="enable_microphone_monitoring_switch">Enable Microphone Monitoring (from ESP)</string>
+    <string name="app_side_alert_level_label">App-Side Alert Level (dB):</string>
+    <string name="enable_app_side_loud_noise_alerts_switch">Enable App-Side Loud Noise Alerts</string>
+    <string name="no_active_esp_selected_toast">No active ESP selected.</string>
+    <string name="esp_address_not_set_toast">ESP Address not set.</string>
+    <string name="custom_alert_sound_section_title">App Alert Sound</string>
+
+
+    <!-- NoiseSettingsFragment Strings -->
+    <string name="noise_settings_title_esp">ESP Noise Threshold Setting</string>
+    <string name="current_esp_threshold_label">Current on ESP:</string>
+    <string name="new_threshold_hint_calibrated">New Threshold (e.g., 75.0)</string>
+    <string name="threshold_helper_text_calibrated">Calibrated dB value (dBFS + Offset)</string>
+    <string name="set_esp_threshold_button">Set ESP Threshold</string>
+    <string name="status_fetching_config">Fetching current config from ESP…</string>
+    <string name="status_config_key_missing_threshold">ESP config key \'threshold_db_calibrated\' missing.</string>
+    <string name="status_config_parse_error">Error parsing config from ESP.</string>
+    <string name="status_parse_error">Parse Error</string>
+    <string name="status_key_not_found">Key N/A</string>
+    <string name="status_fetch_error_short">Fetch Error</string>
+    <string name="status_fetch_failed_network">Fetch failed (network): %s</string>
+    <string name="status_fetch_failed_server">Fetch error (server %d): %s</string>
+    <string name="status_set_failed_network">Set failed (network): %s</string>
+    <string name="status_set_failed_server">Set error (server %d): %s</string>
+    <string name="status_setting_threshold">Setting threshold on ESP…</string>
+    <string name="status_threshold_set_success">ESP threshold set successfully. Refreshing…</string>
+    <string name="enter_threshold_value_prompt">Please enter a threshold value.</string>
+    <string name="invalid_threshold_format_prompt">Invalid number format for threshold.</string>
+    <string name="status_invalid_format">Invalid format.</string>
+    <string name="status_fetched_successfully">Config fetched.</string>
+
+
+    <!-- EspConfigFragment Strings -->
+    <string name="esp_system_config_title">ESP System Configuration</string>
+    <string name="fetch_current_config_from_esp_button">Fetch Current Config from ESP</string>
+    <string name="calibration_offset_label_db">Calibration Offset (dB)</string>
+    <string name="calibration_offset_hint">e.g., 105.0</string>
+    <string name="calibration_offset_helper">Adjusts raw dBFS to calibrated dB levels</string>
+    <string name="set_calibration_offset_button">Set Calibration Offset</string>
+    <string name="wifi_configuration_label">WiFi Configuration (on ESP)</string>
+    <string name="wifi_ssid_hint">WiFi Network Name (SSID)</string>
+    <string name="wifi_password_hint">WiFi Password</string>
+    <string name="set_wifi_config_button">Set ESP WiFi Config</string>
+    <string name="wifi_config_note_esp_reboot">Note: ESP may need to reboot or its IP may change to apply new WiFi settings. Re-scan or re-select device if needed.</string>
+    <string name="status_config_loaded_at">Config loaded at: %s</string> <!-- Placeholder for timestamp, not implemented yet -->
+    <string name="status_config_fetched_ok">ESP config fetched successfully.</string>
+    <string name="status_setting_calibration">Setting calibration offset on ESP…</string>
+    <string name="status_calibration_set_success">ESP calibration offset set. Refreshing config…</string>
+    <string name="status_setting_wifi">Setting WiFi config on ESP…</string>
+    <string name="status_wifi_set_success">ESP WiFi config sent. ESP may restart.</string>
+    <string name="enter_calibration_offset_prompt">Please enter calibration offset.</string>
+    <string name="invalid_offset_format_prompt">Invalid number format for offset.</string>
+    <string name="enter_wifi_ssid_prompt">Please enter WiFi SSID.</string>
+    <string name="esp_reboot_may_be_needed_wifi">ESP may need to reboot to apply WiFi changes.</string>
+
+
+    <!-- DeviceManagementFragment Strings -->
+    <string name="device_management_title">Manage ESP Devices</string>
+    <string name="add_new_esp_manually_label">Add New ESP Manually</string>
+    <string name="esp_address_ip_or_hostname_hint">ESP Address (IP or hostname.local)</string>
+    <string name="esp_address_empty_error">ESP address cannot be empty.</string>
+    <string name="esp_address_invalid_format_error">Invalid address format.</string>
+    <string name="device_added_toast">Device %s added.</string>
+    <string name="configure_multiple_esps_label">Configure Multiple ESPs by Address</string>
+    <string name="number_of_esps_label">Number of ESPs:</string>
+    <string name="esp_address_input_hint_dynamic">ESP %d Address</string>
+    <string name="save_esp_list_from_inputs_button">Save/Update ESP List from Inputs</string>
+    <string name="saved_esp_devices_label">Saved ESP Devices (Tap to Set Active)</string>
+    <string name="currently_active_esp_display">Active: %s</string>
+    <string name="no_active_esp_selected_display">Active: None</string>
+    <string name="discover_esps_on_network_nsd_label">Discover ESPs on Network (NSD)</string>
+    <string name="start_network_scan_button">Scan Network for ESPs</string>
+    <string name="stop_network_scan_button">Stop Network Scan</string>
+    <string name="nsd_status_idle">NSD Status: Idle.</string>
+    <string name="nsd_status_idle_no_services">NSD: Idle. No services found previously.</string>
+    <string name="nsd_status_scanning">NSD Status: Scanning…</string>
+    <string name="nsd_status_stopped_no_services">NSD: Scan stopped. No services found.</string>
+    <string name="nsd_status_stopped_found">NSD: Scan stopped. Found %d service(s).</string>
+    <string name="nsd_status_resolved_found">NSD: Resolved. Total found: %d</string>
+    <string name="nsd_status_discovery_failed">NSD Discovery Failed (Code: %d)</string>
+    <string name="nsd_status_resolve_failed">NSD Resolve Failed for: %s</string>
+    <string name="nsd_scan_timed_out">Network scan timed out.</string>
+    <string name="nsd_discovery_failed_toast">NSD Discovery Failed (Code: %d). Check Wi-Fi.</string>
+    <string name="nsd_service_lost_toast">Lost discovered service: %s</string>
+    <string name="device_set_active_toast">"%s" set as active ESP.</string>
+    <string name="edit_device_dialog_title">Edit ESP: %s</string>
+    <string name="device_name_dialog_hint">Device Name (e.g., Living Room ESP)</string>
+    <string name="device_address_dialog_hint">Address (IP or hostname.local)</string>
+    <string name="name_address_cannot_be_empty">Name and Address cannot be empty.</string>
+    <string name="device_deleted_toast">Device "%s" deleted.</string>
+    <string name="edit_device_content_description">Edit ESP Device</string>
+    <string name="delete_device_content_description">Delete ESP Device</string>
+
+
+    <!-- HttpPollingService & AlertSoundService related (Notifications, Channels) -->
+    <!-- Existing from your file, with additions/renames for clarity -->
+    <string name="channel_name_http_service_status">ESP32 HTTP Service Status</string> <!-- For foreground service -->
+    <string name="http_polling_service_channel_name">ESP32 HTTP Polling Service</string> <!-- More specific name -->
+    <string name="http_polling_service_channel_desc">Status notifications for the ESP32 HTTP Polling background service.</string>
+
+    <string name="channel_name_http_alerts">ESP32 Data Alerts</string> <!-- For data-triggered notifications -->
+    <string name="channel_description_http_alerts">Notifications for data alerts (e.g., loud noise) from ESP32 devices.</string>
+
+    <string name="http_sync_notification_title_suffix">HTTP Sync</string> <!-- Suffix for service notification title -->
+
+    <!-- Custom Sound Alert Feature (some were already in your file) -->
     <string name="select_custom_alert_sound">Select Custom Alert Sound</string>
     <string name="test_custom_alert_sound">Test Custom Alert</string>
     <string name="enable_custom_alert_sound_switch">Enable Custom Alert Sound</string>
     <string name="no_custom_sound_selected">No custom alert sound selected.</string>
     <string name="custom_sound_selected_label">Custom Alert: %s</string>
-    <string name="custom_sound_playing_test">Playing custom alert test...</string>
+    <string name="custom_sound_playing_test">Playing custom alert test…</string>
     <string name="custom_sound_test_finished">Custom alert test finished.</string>
     <string name="custom_sound_error_playing">Error playing custom sound.</string>
     <string name="custom_sound_error_preparing">Error preparing custom sound.</string>
@@ -23,11 +157,18 @@
     <string name="custom_sound_cleared_toast">Custom alert sound cleared.</string>
     <string name="custom_sound_no_longer_accessible_toast">Previously selected custom sound is no longer accessible. Please select again.</string>
     <string name="storage_permission_required_toast">Storage permission is required to select a sound file.</string>
-    <string name="alert_sound_service_channel_name">Custom Alert Sound Service</string>
-    <string name="alert_sound_service_channel_description">Plays custom alert sounds in the background.</string>
-    <string name="alert_sound_notification_title">Playing Alert</string>
-    <string name="alert_sound_notification_text">Custom alert sound is playing.</string>
-    <string name="log_sensor_trigger_file_name">esp32_sensor_triggers.log</string>
 
+    <string name="alert_sound_service_channel_name">Custom Alert Sound Playback</string> <!-- Channel for AlertSoundService's own FG notification -->
+    <string name="alert_sound_service_channel_description">Indicates when a custom alert sound is actively playing.</string>
+    <string name="alert_sound_notification_title">Playing Alert Sound</string>
+    <string name="alert_sound_notification_text">A custom alert sound is currently playing.</string>
+
+    <string name="log_sensor_trigger_file_name">esp32_sensor_triggers.log</string> <!-- For logging triggers -->
+
+    <!-- Old strings, review if still needed or can be removed/merged -->
+    <!-- <string name="channel_name">ESP32 Notifications</string> -->
+    <!-- <string name="channel_description">Notifications received from the local ESP32 device.</string> -->
+    <!-- <string name="channel_name_http">ESP32 HTTP Data</string> --> <!-- Replaced by channel_name_http_alerts for clarity -->
+    <!-- <string name="channel_description_http">Notifications for data polled from ESP32 via HTTP.</string> --> <!-- Replaced -->
 
 </resources>

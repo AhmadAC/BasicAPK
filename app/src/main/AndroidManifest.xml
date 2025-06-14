@@ -22,7 +22,7 @@
 
 
     <!-- Permissions for custom sound -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" /> <!-- Used by AlertSoundService -->
     <!-- For Android 12 (API 32) and below to read audio files -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- For Android 13 (API 33) and above, for specific media types -->

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.textfield.TextInputLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/textInputLayoutDynamicEspItem"
+    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="8dp"
+    android:layout_marginBottom="4dp"
+    app:hintEnabled="true">
+    <!-- The hint will be set programmatically in DeviceManagementFragment -->
+    <!-- e.g., "ESP Address 1", "ESP Address 2", etc. -->
+
+    <com.google.android.material.textfield.TextInputEditText
+        android:id="@+id/editTextDynamicEspAddress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="textUri|textNoSuggestions"
+        android:singleLine="true"/>
+
+</com.google.android.material.textfield.TextInputLayout>

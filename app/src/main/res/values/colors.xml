@@ -15,6 +15,14 @@
     <color name="white">#FFFFFFFF</color>
 
     <!-- Text Colors -->
-    <color name="text_on_primary">#FFFFFF</color>
-    <color name="text_on_accent">#000000</color>
+    <color name="text_on_primary">#FFFFFF</color> <!-- Text color on your primary color -->
+    <color name="text_on_accent">#000000</color>  <!-- Text color on your accent color -->
+
+    <!-- Specific UI Element Colors -->
+    <color name="active_esp_background">#FFE0B2</color> <!-- A light orange/amber for active item highlight. Choose one that fits your theme. -->
+    <!-- Alternatives for active_esp_background: -->
+    <!-- <color name="active_esp_background">#E0E0E0</color> --> <!-- Light gray -->
+    <!-- <color name="active_esp_background">#C8E6C9</color> --> <!-- Light green -->
+    <!-- <color name="active_esp_background">#B3E5FC</color> --> <!-- Light blue -->
+
 </resources>

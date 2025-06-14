@@ -4,228 +4,58 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp"
     tools:context=".MainActivity">
 
-    <TextView
-        android:id="@+id/textViewAppTitle"
-        android:layout_width="wrap_content"
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/app_name"
-        android:textSize="22sp"
-        android:textStyle="bold"
+        android:theme="@style/Theme.MyBasicApp.AppBarOverlay"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/textInputLayoutEspAddress"
-        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        app:layout_constraintTop_toBottomOf="@id/textViewAppTitle"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:hint="ESP32 Address (IP or hostname.local)">
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/editTextEspAddress"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="textUri|textNoSuggestions"
-            android:textColor="?android:attr/textColorPrimary"
-            android:singleLine="true"/>
-    </com.google.android.material.textfield.TextInputLayout>
-
-    <LinearLayout
-        android:id="@+id/layoutConnectionButtons"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="8dp"
-        app:layout_constraintTop_toBottomOf="@id/textInputLayoutEspAddress"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <Button
-            android:id="@+id/buttonConnectManual"
-            android:layout_width="0dp"
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="?attr/colorPrimary"
+            app:popupTheme="@style/Theme.MyBasicApp.PopupOverlay" />
+
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tabLayout"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Connect"
-            android:layout_marginEnd="4dp"/>
+            app:tabMode="scrollable"
+            app:tabGravity="fill"/>
+            <!--
+                app:tabMode can be "fixed" or "scrollable".
+                "scrollable" is good if you have many tabs that might not fit.
+                "fill" for app:tabGravity distributes tab width for fixed mode.
+            -->
 
-        <Button
-            android:id="@+id/buttonDisconnect"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Disconnect"
-            android:layout_marginStart="4dp"
-            android:enabled="false"/>
-    </LinearLayout>
+    </com.google.android.material.appbar.AppBarLayout>
 
-    <Button
-        android:id="@+id/buttonStartStopDiscovery"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Scan Network for ESP32"
-        app:layout_constraintTop_toBottomOf="@id/layoutConnectionButtons"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
-
-    <TextView
-        android:id="@+id/textViewTriggerDistanceLabel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Trigger Distance (cm):"
-        android:layout_marginTop="12dp"
-        app:layout_constraintTop_toBottomOf="@id/buttonStartStopDiscovery"
-        app:layout_constraintStart_toStartOf="parent"/>
-
-    <TextView
-        android:id="@+id/textViewTriggerDistanceValue"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="50 cm"
-        android:layout_marginStart="8dp"
-        app:layout_constraintStart_toEndOf="@id/textViewTriggerDistanceLabel"
-        app:layout_constraintTop_toTopOf="@id/textViewTriggerDistanceLabel"
-        app:layout_constraintBottom_toBottomOf="@id/textViewTriggerDistanceLabel"/>
-
-    <SeekBar
-        android:id="@+id/seekBarTriggerDistance"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:max="200"
-        android:progress="50"
-        android:layout_marginTop="4dp"
-        app:layout_constraintTop_toBottomOf="@id/textViewTriggerDistanceLabel"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
-
-    <com.google.android.material.switchmaterial.SwitchMaterial
-        android:id="@+id/switchEnableNotifications"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="Enable Background Notifications"
-        android:layout_marginTop="8dp"
-        app:layout_constraintTop_toBottomOf="@id/seekBarTriggerDistance"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
-
-    <!-- Custom Sound Alert UI Elements -->
-    <Button
-        android:id="@+id/buttonSelectCustomSound"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/select_custom_alert_sound"
-        android:layout_marginTop="12dp"
-        app:layout_constraintTop_toBottomOf="@id/switchEnableNotifications"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <TextView
-        android:id="@+id/textViewSelectedCustomSound"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/no_custom_sound_selected"
-        android:gravity="center_horizontal"
-        android:layout_marginTop="4dp"
-        app:layout_constraintTop_toBottomOf="@id/buttonSelectCustomSound"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <Button
-        android:id="@+id/buttonTestCustomSound"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/test_custom_alert_sound"
-        android:enabled="false"
-        android:layout_marginTop="4dp"
-        app:layout_constraintTop_toBottomOf="@id/textViewSelectedCustomSound"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <com.google.android.material.switchmaterial.SwitchMaterial
-        android:id="@+id/switchEnableCustomSound"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/enable_custom_alert_sound_switch"
-        android:enabled="false"
-        android:layout_marginTop="8dp"
-        app:layout_constraintTop_toBottomOf="@id/buttonTestCustomSound"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-    <!-- End Custom Sound Alert UI Elements -->
-
-
-    <TextView
-        android:id="@+id/textViewDiscoveredServicesTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Discovered (tap to use):"
-        android:layout_marginTop="12dp"
-        android:textSize="16sp"
-        android:textStyle="italic"
-        android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/switchEnableCustomSound"
-        app:layout_constraintStart_toStartOf="parent"/>
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerViewDiscoveredServices"
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/viewPager"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginTop="4dp"
-        android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/textViewDiscoveredServicesTitle"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@+id/guidelineLogArea"
-        app:layout_constraintHeight_max="120dp"
-        app:layout_constraintHeight_default="wrap"
-        app:layout_constraintVertical_bias="0.0"
-        tools:listitem="@layout/list_item_discovered_service"
-        tools:itemCount="2"/>
-
-    <androidx.constraintlayout.widget.Guideline
-        android:id="@+id/guidelineLogArea"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        app:layout_constraintGuide_end="120dp"/> <!-- Adjusted Guideline -->
-
-    <TextView
-        android:id="@+id/textViewStatus"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="Status: Idle"
-        android:layout_marginBottom="4dp"
-        android:textSize="14sp"
-        app:layout_constraintBottom_toTopOf="@id/textViewLastMessage"
+        app:layout_constraintTop_toBottomOf="@id/appBarLayout"
+        app:layout_constraintBottom_toTopOf="@+id/buttonSaveLogGlobal"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
-
-    <TextView
-        android:id="@+id/textViewLastMessage"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="Last WS Msg: None"
-        android:layout_marginBottom="8dp"
-        android:textSize="12sp"
-        app:layout_constraintBottom_toTopOf="@id/buttonSaveLog"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
 
     <Button
-        android:id="@+id/buttonSaveLog"
+        android:id="@+id/buttonSaveLogGlobal"
+        style="?attr/materialButtonOutlinedStyle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="8dp"
         android:text="Save Activity Log"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

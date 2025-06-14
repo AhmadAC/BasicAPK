@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".fragments.DeviceManagementFragment"
+    android:fillViewport="true">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/textViewDeviceManagementTitle"
+            style="@style/TextAppearance.MaterialComponents.Headline6"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/device_management_title"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- Section for Single Manual Add -->
+        <TextView
+            android:id="@+id/textViewManualAddSectionTitle"
+            style="@style/TextAppearance.MaterialComponents.Subtitle1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/add_new_esp_manually_label"
+            android:layout_marginTop="16dp"
+            app:layout_constraintTop_toBottomOf="@id/textViewDeviceManagementTitle"
+            app:layout_constraintStart_toStartOf="parent"/>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/textInputLayoutNewEspAddressManual"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="@string/esp_address_ip_or_hostname_hint"
+            app:layout_constraintTop_toBottomOf="@id/textViewManualAddSectionTitle"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/buttonAddEspManual"
+            android:layout_marginEnd="8dp">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/editTextNewEspAddressManual"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textUri|textNoSuggestions"
+                android:singleLine="true"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <Button
+            android:id="@+id/buttonAddEspManual"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/add_button_label"
+            app:icon="@drawable/ic_add"
+            app:layout_constraintTop_toTopOf="@id/textInputLayoutNewEspAddressManual"
+            app:layout_constraintBottom_toBottomOf="@id/textInputLayoutNewEspAddressManual"
+            app:layout_constraintEnd_toEndOf="parent"/>
+
+
+        <!-- Section for Dynamic Number of ESP Inputs -->
+        <TextView
+            android:id="@+id/textViewDynamicInputSectionTitle"
+            style="@style/TextAppearance.MaterialComponents.Subtitle1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/configure_multiple_esps_label"
+            android:layout_marginTop="24dp"
+            app:layout_constraintTop_toBottomOf="@id/textInputLayoutNewEspAddressManual"
+            app:layout_constraintStart_toStartOf="parent"/>
+
+        <TextView
+            android:id="@+id/textViewSelectNumEspsLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/number_of_esps_label"
+            android:layout_marginTop="8dp"
+            app:layout_constraintTop_toBottomOf="@id/textViewDynamicInputSectionTitle"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintBaseline_toBaselineOf="@id/spinnerNumEsps"/>
+
+        <Spinner
+            android:id="@+id/spinnerNumEsps"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:layout_marginStart="8dp"
+            app:layout_constraintTop_toTopOf="@id/textViewSelectNumEspsLabel"
+            app:layout_constraintBottom_toBottomOf="@id/textViewSelectNumEspsLabel"
+            app:layout_constraintStart_toEndOf="@id/textViewSelectNumEspsLabel" />
+            <!-- tools:listitem="@android:layout/simple_spinner_item" -->
+
+
+        <LinearLayout
+            android:id="@+id/layoutEspAddressInputsContainer"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp"
+            app:layout_constraintTop_toBottomOf="@id/spinnerNumEsps"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
+            <!-- TextInputEditText fields will be added here programmatically -->
+
+        <Button
+            android:id="@+id/buttonSaveDynamicList"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/save_esp_list_from_inputs_button"
+            android:layout_marginTop="8dp"
+            android:visibility="gone"
+            app:layout_constraintTop_toBottomOf="@id/layoutEspAddressInputsContainer"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
+
+
+        <!-- Managed ESPs List Section -->
+        <TextView
+            android:id="@+id/textViewManagedEspsTitle"
+            style="@style/TextAppearance.MaterialComponents.Subtitle1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/saved_esp_devices_label"
+            android:layout_marginTop="24dp"
+            app:layout_constraintTop_toBottomOf="@id/buttonSaveDynamicList"
+            app:layout_constraintStart_toStartOf="parent"/>
+
+        <TextView
+            android:id="@+id/textViewCurrentActiveEspDisplay"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            tools:text="Active: 192.168.1.100"
+            android:textAppearance="?attr/textAppearanceCaption"
+            android:textStyle="italic"
+            app:layout_constraintTop_toBottomOf="@id/textViewManagedEspsTitle"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerViewManagedEsps"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:minHeight="100dp"
+            android:maxHeight="200dp"
+            android:layout_marginTop="8dp"
+            app:layout_constraintTop_toBottomOf="@id/textViewCurrentActiveEspDisplay"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            tools:listitem="@layout/list_item_esp_device"
+            tools:itemCount="2"/>
+
+
+        <!-- Network Service Discovery (NSD) Section -->
+        <TextView
+            android:id="@+id/textViewNsdSectionTitle"
+            style="@style/TextAppearance.MaterialComponents.Subtitle1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/discover_esps_on_network_nsd_label"
+            android:layout_marginTop="24dp"
+            app:layout_constraintTop_toBottomOf="@id/recyclerViewManagedEsps"
+            app:layout_constraintStart_toStartOf="parent"/>
+
+        <Button
+            android:id="@+id/buttonScanNetwork"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/start_network_scan_button"
+            android:layout_marginTop="8dp"
+            app:icon="@drawable/ic_wifi_search"
+            app:layout_constraintTop_toBottomOf="@id/textViewNsdSectionTitle"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
+
+        <TextView
+            android:id="@+id/textViewNsdStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            tools:text="NSD Status: Idle. Tap scan to begin."
+            android:textAppearance="?attr/textAppearanceCaption"
+            app:layout_constraintTop_toBottomOf="@id/buttonScanNetwork"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerViewDiscoveredNsdServices"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:minHeight="100dp"
+            android:maxHeight="200dp"
+            android:layout_marginTop="8dp"
+            app:layout_constraintTop_toBottomOf="@id/textViewNsdStatus"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintVertical_bias="0.0"
+            tools:listitem="@layout/list_item_esp_device"
+            tools:itemCount="1"/>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</ScrollView>

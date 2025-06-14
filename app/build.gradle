@@ -1,3 +1,8 @@
+// File: app/build.gradle
+// No changes are strictly required here if your com.google.android.material:material dependency
+// (version 1.1.0 or higher, yours is 1.11.0) is already present, as it includes ViewPager2.
+// Your existing file already looks good for this.
+
 plugins {
     id 'com.android.application'
     // id 'org.jetbrains.kotlin.android' // This project uses Java, so Kotlin plugin is not needed
@@ -32,6 +37,10 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+    // If you plan to use View Binding (optional, but recommended for easier view access in fragments/activities):
+    // buildFeatures {
+    // viewBinding true
+    // }
 }
 
 // This block customizes the output APK name for debug builds.
@@ -52,8 +61,14 @@ dependencies {
     // Use 'androidx.core:core' for Java projects. 'core-ktx' is for Kotlin.
     implementation 'androidx.core:core:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'com.google.android.material:material:1.11.0' // Includes ViewPager2
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+
+    // ViewModel and LiveData (Lifecycle components)
+    implementation "androidx.lifecycle:lifecycle-viewmodel:2.7.0"
+    implementation "androidx.lifecycle:lifecycle-livedata:2.7.0"
+    implementation "androidx.lifecycle:lifecycle-common-java8:2.7.0" // For Java 8 language features like default methods in interfaces
+
 
     // Add OkHttp dependency, required for WebSocketService.java.
     // This was previously (and incorrectly) in the root build.gradle's dependencies.
