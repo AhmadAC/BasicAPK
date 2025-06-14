@@ -8,6 +8,7 @@ import org.json.JSONObject; // For the potential updateFullConfig method
 import java.io.IOException;
 import java.net.URLEncoder; // For encoding form data values
 import java.nio.charset.StandardCharsets;
+import java.util.Locale; // ADDED IMPORT
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;

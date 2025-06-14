@@ -25,6 +25,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+import androidx.core.app.NotificationCompat; // ADDED IMPORT
 
 
 import org.json.JSONException;
@@ -92,6 +93,7 @@ public class HttpPollingService extends Service {
     // App-side alert threshold (read from different prefs, set by HomeFragment)
     private static final String PREFS_HOME_FRAGMENT = "HomeFragmentPrefs_v2";
     private static final String PREF_APP_ALERT_LEVEL_DB = "app_alert_level_db";
+    private static final String PREF_APP_ALERTS_ENABLED = "app_alerts_enabled"; // ADDED CONSTANT
     // Default values if not found in prefs
     private static final int DEFAULT_APP_ALERT_THRESHOLD_DB = 70; // Default if not set in HomeFragment prefs
     private static final boolean DEFAULT_NOTIFICATIONS_ENABLED = false;

@@ -1,9 +1,12 @@
-package com.example.mybasicapp;
+package com.example.mybasicapp.network; // CORRECTED PACKAGE DECLARATION
 
 import android.content.Context;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.util.Log;
+
+// Corrected import for DiscoveredService based on its new package
+import com.example.mybasicapp.model.DiscoveredService;
 
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -79,7 +82,7 @@ public class NsdHelper {
             @Override
             public void onServiceLost(NsdServiceInfo service) {
                 Log.w(TAG, "onServiceLost: Name='" + service.getServiceName() + "', Type='" + service.getServiceType() + "'");
-                if (listener != null) listener.onNsdServiceLost(new DiscoveredService(service));
+                if (listener != null) listener.onNsdServiceLost(new DiscoveredService(service)); // Uses com.example.mybasicapp.model.DiscoveredService
                 resolveQueue.remove(service);
             }
 
@@ -159,7 +162,7 @@ public class NsdHelper {
             public void onServiceResolved(NsdServiceInfo serviceInfo) {
                 String hostAddress = (serviceInfo.getHost() != null) ? serviceInfo.getHost().getHostAddress() : "N/A";
                 Log.i(TAG, "onServiceResolved: Name='" + serviceInfo.getServiceName() + "', Host='" + hostAddress + "', Port='" + serviceInfo.getPort() + "'");
-                if (listener != null) listener.onNsdServiceResolved(new DiscoveredService(serviceInfo));
+                if (listener != null) listener.onNsdServiceResolved(new DiscoveredService(serviceInfo)); // Uses com.example.mybasicapp.model.DiscoveredService
                 finishResolvingAndProcessNext();
             }
         });

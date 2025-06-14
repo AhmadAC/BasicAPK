@@ -2,6 +2,7 @@ package com.example.mybasicapp.fragments;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ContentResolver; // ADDED IMPORT
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;

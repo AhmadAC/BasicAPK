@@ -1,6 +1,7 @@
-package com.example.mybasicapp;
+package com.example.mybasicapp.model; // CORRECTED PACKAGE DECLARATION
 
 import android.net.nsd.NsdServiceInfo;
+import java.util.Objects; // Import for Objects.hash and Objects.equals if targeting lower API or for clarity
 
 public class DiscoveredService {
     private String serviceName;
@@ -54,13 +55,13 @@ public class DiscoveredService {
         if (o == null || getClass() != o.getClass()) return false;
         DiscoveredService that = (DiscoveredService) o;
         return port == that.port &&
-                java.util.Objects.equals(serviceName, that.serviceName) &&
-                java.util.Objects.equals(hostAddress, that.hostAddress) &&
-                java.util.Objects.equals(type, that.type);
+                Objects.equals(serviceName, that.serviceName) &&
+                Objects.equals(hostAddress, that.hostAddress) &&
+                Objects.equals(type, that.type);
     }
 
     @Override
     public int hashCode() {
-        return java.util.Objects.hash(serviceName, hostAddress, port, type);
+        return Objects.hash(serviceName, hostAddress, port, type);
     }
 }
