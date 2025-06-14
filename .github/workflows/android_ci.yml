@@ -1,4 +1,6 @@
-name: Android CI Build (Online Wrapper Init)
+# File: .github/workflows/android_ci.yml
+
+name: MrCooperESP32 Android CI # <--- UPDATED NAME HERE
 
 on:
   push:
