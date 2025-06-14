@@ -37,7 +37,7 @@
     <string name="mic_data_parse_error">Mic Data: Error parsing data from ESP.</string>
     <string name="mic_data_esp_error">Mic Data (ESP Error): %s</string>
     <string name="mic_data_invalid_default">Mic Data: Invalid or no data from ESP.</string>
-    <string name="mic_data_format">Level: %.1f dB (RMS: %.0f) ESP_Sts: %s</string>
+    <string name="mic_data_format">Level: %1$.1f dB (RMS: %2$.0f) ESP_Sts: %3$s</string>
     <string name="enable_microphone_monitoring_switch">Enable Microphone Monitoring (from ESP)</string>
     <string name="app_side_alert_level_label">App-Side Alert Level (dB):</string>
     <string name="enable_app_side_loud_noise_alerts_switch">Enable App-Side Loud Noise Alerts</string>
@@ -59,9 +59,9 @@
     <string name="status_key_not_found">Key N/A</string>
     <string name="status_fetch_error_short">Fetch Error</string>
     <string name="status_fetch_failed_network">Fetch failed (network): %s</string>
-    <string name="status_fetch_failed_server">Fetch error (server %d): %s</string>
+    <string name="status_fetch_failed_server">Fetch error (server %1$d): %2$s</string>
     <string name="status_set_failed_network">Set failed (network): %s</string>
-    <string name="status_set_failed_server">Set error (server %d): %s</string>
+    <string name="status_set_failed_server">Set error (server %1$d): %2$s</string>
     <string name="status_setting_threshold">Setting threshold on ESP…</string>
     <string name="status_threshold_set_success">ESP threshold set successfully. Refreshing…</string>
     <string name="enter_threshold_value_prompt">Please enter a threshold value.</string>
