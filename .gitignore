@@ -8,7 +8,7 @@
 /captures/
 .externalNativeBuild/
 .cxx/
-
+/0
 # Secrets (if any)
 *.keystore
 *.jks
