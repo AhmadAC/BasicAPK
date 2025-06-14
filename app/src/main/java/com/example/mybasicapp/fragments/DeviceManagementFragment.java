@@ -29,10 +29,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.mybasicapp.R;
-import com.example.mybasicapp.adapters.EspDeviceAdapter; // We'll create this adapter
-import com.example.mybasicapp.DiscoveredService; // Already exists - CORRECTED IMPORT
-import com.example.mybasicapp.model.EspDevice;    // Already exists
-import com.example.mybasicapp.NsdHelper;  // Already exists - CORRECTED IMPORT
+import com.example.mybasicapp.adapters.EspDeviceAdapter;
+// CORRECTED IMPORTS to match actual package locations
+import com.example.mybasicapp.model.DiscoveredService;
+import com.example.mybasicapp.model.EspDevice;
+import com.example.mybasicapp.network.NsdHelper;
 import com.example.mybasicapp.viewmodels.AppViewModel;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
